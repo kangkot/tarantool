@@ -385,6 +385,8 @@ struct vy_run_info {
 	/** Bloom filter of all tuples in run */
 	bool has_bloom;
 	struct bloom bloom;
+	/** Key part of the maximal tuple of the range. */
+	char *max_key;
 	/** Pages meta. */
 	struct vy_page_info *page_infos;
 };
@@ -1395,6 +1397,8 @@ vy_run_delete(struct vy_run *run)
 			vy_page_info_destroy(run->info.page_infos + page_no);
 		free(run->info.page_infos);
 	}
+	if (run->info.max_key != NULL)
+		free(run->info.max_key);
 	if (run->info.has_bloom)
 		bloom_destroy(&run->info.bloom, runtime.quota);
 	TRASH(run);
@@ -2106,7 +2110,7 @@ vy_run_write_page(struct vy_run_info *run_info, struct xlog *data_xlog,
 		  struct vy_write_iterator *wi, const char *split_key,
 		  uint32_t *page_info_capacity, struct bloom_spectrum *bs,
 		  struct tuple **curr_stmt, const struct index_def *index_def,
-		  const struct index_def *user_index_def)
+		  const struct index_def *user_index_def, bool need_max_key)
 {
 	assert(curr_stmt != NULL);
 	assert(*curr_stmt != NULL);
@@ -2134,6 +2138,7 @@ vy_run_write_page(struct vy_run_info *run_info, struct xlog *data_xlog,
 	vy_page_info_create(page, data_xlog->offset, index_def, *curr_stmt);
 	bool end_of_run = false;
 	xlog_tx_begin(data_xlog);
+	struct tuple *stmt = NULL;
 
 	do {
 		uint32_t *offset = (uint32_t *) ibuf_alloc(&row_index_buf,
@@ -2145,7 +2150,10 @@ vy_run_write_page(struct vy_run_info *run_info, struct xlog *data_xlog,
 		}
 		*offset = page->unpacked_size;
 
-		struct tuple *stmt = *curr_stmt;
+		if (stmt != NULL)
+			tuple_unref(stmt);
+		stmt = *curr_stmt;
+		tuple_ref(stmt);
 		if (vy_run_dump_stmt(stmt, data_xlog, page, index_def) != 0)
 			goto error_rollback;
 		bloom_spectrum_add(bs, tuple_hash(stmt, user_index_def));
@@ -2158,10 +2166,30 @@ vy_run_write_page(struct vy_run_info *run_info, struct xlog *data_xlog,
 			(split_key != NULL &&
 			 vy_tuple_compare_with_raw_key(*curr_stmt, split_key,
 						       &index_def->key_def) >= 0);
-
 	} while (end_of_run == false &&
 		 obuf_size(&data_xlog->obuf) < (uint64_t)index_def->opts.page_size);
 
+	if (end_of_run && stmt != NULL && need_max_key) {
+		size_t used = region_used(&fiber()->gc);
+		/*
+		 * Tuple_extract_key allocates the key on a
+		 * region, but the max_key must be allocated on
+		 * the heap, because the max_key can live longer
+		 * than a fiber. To reach this, we must copy the
+		 * key into malloced memory.
+		 */
+		run_info->max_key = tuple_extract_key(stmt, index_def, NULL);
+		tuple_unref(stmt);
+		if (run_info->max_key == NULL)
+			goto error_rollback;
+		stmt = NULL;
+		run_info->max_key = vy_key_dup(run_info->max_key);
+		region_truncate(&fiber()->gc, used);
+		if (run_info->max_key == NULL)
+			goto error_rollback;
+	}
+	if (stmt != NULL)
+		tuple_unref(stmt);
 	/* Save offset to row index  */
 	page->row_index_offset = page->unpacked_size;
 
@@ -2218,7 +2246,7 @@ vy_run_write_data(struct vy_run *run, const char *dirpath,
 		  struct vy_write_iterator *wi, struct tuple **curr_stmt,
 		  const char *end_key, struct bloom_spectrum *bs,
 		  const struct index_def *index_def,
-		  const struct index_def *user_index_def)
+		  const struct index_def *user_index_def, bool need_max_key)
 {
 	assert(curr_stmt != NULL);
 	assert(*curr_stmt != NULL);
@@ -2241,13 +2269,15 @@ vy_run_write_data(struct vy_run *run, const char *dirpath,
 	 * the split key is reached.
 	 */
 	run_info->min_lsn = INT64_MAX;
+	run_info->max_key = NULL;
 	assert(run_info->page_infos == NULL);
 	uint32_t page_infos_capacity = 0;
 	int rc;
 	do {
 		rc = vy_run_write_page(run_info, &data_xlog, wi,
 				       end_key, &page_infos_capacity, bs,
-				       curr_stmt, index_def, user_index_def);
+				       curr_stmt, index_def, user_index_def,
+				       need_max_key);
 		if (rc < 0)
 			goto err;
 		fiber_gc();
@@ -2878,12 +2908,13 @@ vy_range_rotate_mem(struct vy_range *range)
 			 index->upsert_format);
 	if (mem == NULL)
 		return -1;
-	if (range->mem->used > 0)
+	if (range->mem->used > 0) {
 		vy_range_freeze_mem(range);
-	else
+	} else {
 		vy_mem_delete(range->mem);
+		range->version++;
+	}
 	range->mem = mem;
-	range->version++;
 	return 0;
 }
 
@@ -3062,7 +3093,8 @@ vy_range_write_run(struct vy_range *range, struct vy_write_iterator *wi,
 	bloom_spectrum_create(&bs, max_output_count, bloom_fpr, runtime.quota);
 
 	if (vy_run_write_data(run, index->path, wi, stmt, range->end, &bs,
-			      index_def, user_index_def) != 0)
+			      index_def, user_index_def,
+			      range->is_level_zero) != 0)
 		return -1;
 
 	bloom_spectrum_choose(&bs, &run->info.bloom);
@@ -3463,6 +3495,9 @@ struct vy_index_recovery_cb_arg {
 	struct vy_range *range;
 };
 
+static int
+vy_run_recover_max_key(struct vy_run *run, struct vy_index *index);
+
 /** Index recovery callback, passed to xctl_recover_index(). */
 static int
 vy_index_recovery_cb(const struct xctl_record *record, void *cb_arg)
@@ -3475,7 +3510,7 @@ vy_index_recovery_cb(const struct xctl_record *record, void *cb_arg)
 
 	switch (record->type) {
 	case XCTL_CREATE_VY_INDEX:
-		assert(record->vy_index_id == index->index_def->opts.lsn);
+		assert(record->vy_index_id == index_def->opts.lsn);
 		break;
 	case XCTL_DROP_VY_INDEX:
 		index->is_dropped = true;
@@ -3500,16 +3535,24 @@ vy_index_recovery_cb(const struct xctl_record *record, void *cb_arg)
 		run = vy_run_new(record->vy_run_id);
 		if (run == NULL)
 			return -1;
-		if (vy_run_recover(run, index->path) != 0) {
-			vy_run_unref(run);
-			return -1;
-		}
+		if (vy_run_recover(run, index->path) != 0)
+			goto run_error;
+		/*
+		 * Level zero runs must have max_key to be
+		 * correctly splited into ranges.
+		 */
+		if (range->is_level_zero &&
+		    vy_run_recover_max_key(run, index) != 0)
+			goto run_error;
 		vy_range_add_run(range, run);
 		break;
 	default:
 		unreachable();
 	}
 	return 0;
+run_error:
+	vy_run_unref(run);
+	return -1;
 }
 
 static int
@@ -8628,6 +8671,47 @@ vy_run_iterator_close(struct vy_stmt_iterator *vitr)
 	assert(itr->curr_stmt == NULL && itr->curr_page == NULL);
 	TRASH(itr);
 	(void) itr;
+}
+
+static int
+vy_run_recover_max_key(struct vy_run *run, struct vy_index *index)
+{
+	struct vy_run_iterator ri;
+	struct vy_iterator_stat unused;
+	memset(&unused, 0, sizeof(unused));
+	struct tuple_format *format = index->env->key_format;
+	struct tuple *key = vy_stmt_new_select(format, NULL, 0);
+	if (key == NULL)
+		return -1;
+	static const int64_t vlsn = INT64_MAX;
+	vy_run_iterator_open(&ri, &unused, index, run, ITER_LE, key, &vlsn,
+			     index->surrogate_format, index->upsert_format);
+	struct tuple *max_tuple;
+	int rc = vy_run_iterator_start(&ri, &max_tuple);
+	tuple_unref(key);
+	if (rc != 0)
+		goto iter_error;
+	assert(max_tuple != NULL);
+	size_t used = region_used(&fiber()->gc);
+	/*
+	 * The max_key can live longer than a fiber, and must be
+	 * copied from a region into malloced memory.
+	 */
+	run->info.max_key = tuple_extract_key(max_tuple, index->index_def,
+					      NULL);
+	if (run->info.max_key == NULL)
+		goto iter_error;
+	run->info.max_key = vy_key_dup(run->info.max_key);
+	region_truncate(&fiber()->gc, used);
+	if (run->info.max_key == NULL)
+		goto iter_error;
+	vy_run_iterator_cleanup(&ri.base);
+	vy_run_iterator_close(&ri.base);
+	return 0;
+iter_error:
+	vy_run_iterator_cleanup(&ri.base);
+	vy_run_iterator_close(&ri.base);
+	return -1;
 }
 
 static struct vy_stmt_iterator_iface vy_run_iterator_iface = {
