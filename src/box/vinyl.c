@@ -1625,11 +1625,15 @@ vy_range_discard_new_run(struct vy_range *range)
 	}
 }
 
-/** Return true if a task was scheduled for a given range. */
+/** Return true if the range waits to be scheduled. */
 static bool
-vy_range_is_scheduled(struct vy_range *range)
+vy_range_waits_for_task(struct vy_range *range)
 {
-	return range->in_dump.pos == UINT32_MAX;
+	assert(range->in_dump.pos == UINT32_MAX &&
+	       range->in_compact.pos == UINT32_MAX ||
+	       range->in_dump.pos != UINT32_MAX &&
+	       range->in_compact.pos != UINT32_MAX);
+	return range->in_dump.pos != UINT32_MAX;
 }
 
 static void
@@ -1672,7 +1676,7 @@ vy_range_tree_free_cb(vy_range_tree_t *t, struct vy_range *range, void *arg)
 	struct vy_mem *mem;
 	rlist_foreach_entry(mem, &range->frozen, in_frozen)
 		vy_scheduler_mem_dumped(scheduler, mem);
-	if (range->in_dump.pos != UINT32_MAX) {
+	if (vy_range_waits_for_task(range)) {
 		/*
 		 * The range could have already been removed
 		 * by vy_schedule().
@@ -2911,8 +2915,7 @@ static void
 vy_range_delete(struct vy_range *range)
 {
 	/* The range has been deleted from the scheduler queues. */
-	assert(range->in_dump.pos == UINT32_MAX);
-	assert(range->in_compact.pos == UINT32_MAX);
+	assert(! vy_range_waits_for_task(range));
 
 	if (range->begin)
 		free(range->begin);
@@ -3218,11 +3221,11 @@ vy_range_needs_coalesce(struct vy_range *range,
 	 * or compaction, because it is about to be processed by
 	 * a worker thread.
 	 */
-	assert(!vy_range_is_scheduled(range));
+	assert(vy_range_waits_for_task(range));
 
 	*p_first = *p_last = range;
 	for (it = vy_range_tree_next(&index->tree, range);
-	     it != NULL && !vy_range_is_scheduled(it);
+	     it != NULL && vy_range_waits_for_task(it);
 	     it = vy_range_tree_next(&index->tree, it)) {
 		uint64_t size = it->size + it->used;
 		if (total_size + size > max_size)
@@ -3231,7 +3234,7 @@ vy_range_needs_coalesce(struct vy_range *range,
 		*p_last = it;
 	}
 	for (it = vy_range_tree_prev(&index->tree, range);
-	     it != NULL && !vy_range_is_scheduled(it);
+	     it != NULL && vy_range_waits_for_task(it);
 	     it = vy_range_tree_prev(&index->tree, it)) {
 		uint64_t size = it->size + it->used;
 		if (total_size + size > max_size)
@@ -3876,8 +3879,7 @@ vy_task_dump_execute(struct vy_task *task)
 	assert(range->is_level_zero);
 
 	/* The range has been deleted from the scheduler queues. */
-	assert(range->in_dump.pos == UINT32_MAX);
-	assert(range->in_compact.pos == UINT32_MAX);
+	assert(! vy_range_waits_for_task(range));
 
 	/* Start iteration. */
 	if (vy_write_iterator_next(wi, &stmt) != 0 ||
@@ -4032,8 +4034,7 @@ vy_task_split_execute(struct vy_task *task)
 	uint64_t unused;
 
 	/* The range has been deleted from the scheduler queues. */
-	assert(range->in_dump.pos == UINT32_MAX);
-	assert(range->in_compact.pos == UINT32_MAX);
+	assert(! vy_range_waits_for_task(range));
 
 	/* Start iteration. */
 	if (vy_write_iterator_next(wi, &stmt) != 0)
@@ -4283,8 +4284,7 @@ vy_task_compact_execute(struct vy_task *task)
 	uint64_t unused;
 
 	/* The range has been deleted from the scheduler queues. */
-	assert(range->in_dump.pos == UINT32_MAX);
-	assert(range->in_compact.pos == UINT32_MAX);
+	assert(! vy_range_waits_for_task(range));
 
 	/* Start iteration. */
 	if (vy_write_iterator_next(wi, &stmt) != 0 ||
@@ -4664,22 +4664,21 @@ static void
 vy_scheduler_add_range(struct vy_scheduler *scheduler,
 		       struct vy_range *range)
 {
+	assert(! vy_range_waits_for_task(range));
 	vy_dump_heap_insert(&scheduler->dump_heap, &range->in_dump);
 	vy_compact_heap_insert(&scheduler->compact_heap, &range->in_compact);
-	assert(range->in_dump.pos != UINT32_MAX);
-	assert(range->in_compact.pos != UINT32_MAX);
+	assert(vy_range_waits_for_task(range));
 }
 
 static void
 vy_scheduler_update_range(struct vy_scheduler *scheduler,
 			  struct vy_range *range)
 {
-	if (range->in_dump.pos == UINT32_MAX)
+	if (! vy_range_waits_for_task(range))
 		return; /* range is being processed by a task */
 
 	vy_dump_heap_update(&scheduler->dump_heap, &range->in_dump);
-	assert(range->in_dump.pos != UINT32_MAX);
-	assert(range->in_compact.pos != UINT32_MAX);
+	assert(vy_range_waits_for_task(range));
 }
 
 static void
