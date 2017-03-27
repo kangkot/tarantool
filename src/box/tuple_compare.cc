@@ -311,14 +311,14 @@ tuple_compare_slowpath_raw(const struct tuple_format *format_a,
 			   const char *tuple_b, const uint32_t *field_map_b,
 			   const struct key_def *key_def)
 {
-	const struct key_part *part = key_def->parts;
-	if (key_def->part_count == 1 && part->fieldno == 0) {
+	const struct key_part *part = key_def->part_def.parts;
+	if (key_def->part_def.part_count == 1 && part->fieldno == 0) {
 		mp_decode_array(&tuple_a);
 		mp_decode_array(&tuple_b);
 		return tuple_compare_field(tuple_a, tuple_b, part->type);
 	}
 
-	const struct key_part *end = part + key_def->part_count;
+	const struct key_part *end = part + key_def->part_def.part_count;
 	const char *field_a;
 	const char *field_b;
 	int r = 0;
@@ -373,11 +373,11 @@ key_compare(const char *key_a, const char *key_b,
 {
 	uint32_t part_count_a = mp_decode_array(&key_a);
 	uint32_t part_count_b = mp_decode_array(&key_b);
-	assert(part_count_a <= key_def->part_count);
-	assert(part_count_b <= key_def->part_count);
+	assert(part_count_a <= key_def->part_def.part_count);
+	assert(part_count_b <= key_def->part_def.part_count);
 	uint32_t part_count = MIN(part_count_a, part_count_b);
-	assert(part_count <= key_def->part_count);
-	return key_compare_parts(key_a, key_b, part_count, key_def->parts);
+	assert(part_count <= key_def->part_def.part_count);
+	return key_compare_parts(key_a, key_b, part_count, key_def->part_def.parts);
 }
 
 static int
@@ -388,10 +388,10 @@ tuple_compare_with_key_sequential(const struct tuple *tuple, const char *key,
 	assert(key_def_is_sequential(key_def));
 	const char *tuple_key = tuple_data(tuple);
 	uint32_t tuple_field_count = mp_decode_array(&tuple_key);
-	assert(tuple_field_count >= key_def->part_count);
-	assert(part_count <= key_def->part_count);
+	assert(tuple_field_count >= key_def->part_def.part_count);
+	assert(part_count <= key_def->part_def.part_count);
 	(void) tuple_field_count;
-	return key_compare_parts(tuple_key, key, part_count, key_def->parts);
+	return key_compare_parts(tuple_key, key, part_count, key_def->part_def.parts);
 }
 
 static int
@@ -402,14 +402,14 @@ tuple_compare_sequential(const struct tuple *tuple_a,
 	assert(key_def_is_sequential(key_def));
 	const char *key_a = tuple_data(tuple_a);
 	uint32_t field_count_a = mp_decode_array(&key_a);
-	assert(field_count_a >= key_def->part_count);
+	assert(field_count_a >= key_def->part_def.part_count);
 	(void) field_count_a;
 	const char *key_b = tuple_data(tuple_b);
 	uint32_t field_count_b = mp_decode_array(&key_b);
-	assert(field_count_b >= key_def->part_count);
+	assert(field_count_b >= key_def->part_def.part_count);
 	(void) field_count_b;
-	return key_compare_parts(key_a, key_b, key_def->part_count,
-				 key_def->parts);
+	return key_compare_parts(key_a, key_b, key_def->part_def.part_count,
+				 key_def->part_def.parts);
 }
 
 static inline int
@@ -419,8 +419,8 @@ tuple_compare_with_key_slowpath_raw(const struct tuple_format *format,
 				    const struct key_def *key_def)
 {
 	assert(key != NULL || part_count == 0);
-	assert(part_count <= key_def->part_count);
-	const struct key_part *part = key_def->parts;
+	assert(part_count <= key_def->part_def.part_count);
+	const struct key_part *part = key_def->part_def.parts;
 	if (likely(part_count == 1)) {
 		const char *field;
 		field = tuple_field_raw(format, tuple, field_map,
@@ -428,7 +428,7 @@ tuple_compare_with_key_slowpath_raw(const struct tuple_format *format,
 		return tuple_compare_field(field, key, part->type);
 	}
 
-	const struct key_part *end = part + MIN(part_count, key_def->part_count);
+	const struct key_part *end = part + MIN(part_count, key_def->part_def.part_count);
 	int r = 0; /* Part count can be 0 in wildcard searches. */
 	for (; part < end; part++) {
 		const char *field;
@@ -636,11 +636,11 @@ tuple_compare_t
 tuple_compare_create(const struct key_def *def) {
 	for (uint32_t k = 0; k < sizeof(cmp_arr) / sizeof(cmp_arr[0]); k++) {
 		uint32_t i = 0;
-		for (; i < def->part_count; i++)
-			if (def->parts[i].fieldno != cmp_arr[k].p[i * 2] ||
-			    def->parts[i].type != cmp_arr[k].p[i * 2 + 1])
+		for (; i < def->part_def.part_count; i++)
+			if (def->part_def.parts[i].fieldno != cmp_arr[k].p[i * 2] ||
+			    def->part_def.parts[i].type != cmp_arr[k].p[i * 2 + 1])
 				break;
-		if (i == def->part_count && cmp_arr[k].p[i * 2] == UINT32_MAX)
+		if (i == def->part_def.part_count && cmp_arr[k].p[i * 2] == UINT32_MAX)
 			return cmp_arr[k].f;
 	}
 	if (key_def_is_sequential(def))
@@ -835,13 +835,13 @@ tuple_compare_with_key_create(const struct key_def *def)
 	     k++) {
 
 		uint32_t i = 0;
-		for (; i < def->part_count; i++) {
-			if (def->parts[i].fieldno != cmp_wk_arr[k].p[i * 2] ||
-			    def->parts[i].type != cmp_wk_arr[k].p[i * 2 + 1]) {
+		for (; i < def->part_def.part_count; i++) {
+			if (def->part_def.parts[i].fieldno != cmp_wk_arr[k].p[i * 2] ||
+			    def->part_def.parts[i].type != cmp_wk_arr[k].p[i * 2 + 1]) {
 				break;
 			}
 		}
-		if (i == def->part_count)
+		if (i == def->part_def.part_count)
 			return cmp_wk_arr[k].f;
 	}
 	if (key_def_is_sequential(def))

@@ -79,8 +79,8 @@ vy_cache_entry_new(struct vy_cache_env *env, struct vy_cache *cache,
 	entry->cache = cache;
 	entry->stmt = stmt;
 	entry->flags = 0;
-	entry->left_boundary_level = cache->key_def->part_count;
-	entry->right_boundary_level = cache->key_def->part_count;
+	entry->left_boundary_level = cache->key_def->part_def.part_count;
+	entry->right_boundary_level = cache->key_def->part_def.part_count;
 	rlist_add(&env->cache_lru, &entry->in_lru);
 	size_t use = sizeof(struct vy_cache_entry) + tuple_size(stmt);
 	vy_quota_force_use(&env->quota, use);
@@ -234,7 +234,7 @@ vy_cache_add(struct vy_cache *cache, struct tuple *stmt,
 	 * Let's determine boundary_level (left/right) of the new record
 	 * in cache to be inserted.
 	 */
-	uint8_t boundary_level = cache->key_def->part_count;
+	uint8_t boundary_level = cache->key_def->part_def.part_count;
 	if (stmt != NULL) {
 		if (is_boundary) {
 			/**
@@ -369,7 +369,7 @@ vy_cache_on_write(struct vy_cache *cache, struct tuple *stmt)
 	}
 	if (prev_entry) {
 		cache->version++;
-		(*prev_entry)->right_boundary_level = cache->key_def->part_count;
+		(*prev_entry)->right_boundary_level = cache->key_def->part_def.part_count;
 	}
 
 	struct vy_cache_tree_iterator next = itr;
@@ -385,7 +385,7 @@ vy_cache_on_write(struct vy_cache *cache, struct tuple *stmt)
 	}
 	if (entry && !exact) {
 		cache->version++;
-		(*entry)->left_boundary_level = cache->key_def->part_count;
+		(*entry)->left_boundary_level = cache->key_def->part_def.part_count;
 	}
 
 	if (exact) {

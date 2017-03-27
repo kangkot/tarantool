@@ -118,8 +118,8 @@ inline void
 extract_rectangle(struct rtree_rect *rect, const struct tuple *tuple,
 		  struct key_def *key_def)
 {
-	assert(key_def->part_count == 1);
-	const char *elems = tuple_field(tuple, key_def->parts[0].fieldno);
+	assert(key_def->part_def.part_count == 1);
+	const char *elems = tuple_field(tuple, key_def->part_def.parts[0].fieldno);
 	unsigned dimension = key_def->opts.dimension;
 	if (mp_decode_rect(rect, dimension, elems)) {
 		tnt_raise(ClientError, ER_RTREE_RECT,
@@ -166,8 +166,8 @@ MemtxRTree::~MemtxRTree()
 MemtxRTree::MemtxRTree(struct key_def *key_def_arg)
 	: MemtxIndex(key_def_arg)
 {
-	assert(key_def->part_count == 1);
-	assert(key_def->parts[0].type == FIELD_TYPE_ARRAY);
+	assert(key_def->part_def.part_count == 1);
+	assert(key_def->part_def.parts[0].type == FIELD_TYPE_ARRAY);
 	assert(key_def->opts.is_unique == false);
 
 	m_dimension = key_def->opts.dimension;

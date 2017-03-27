@@ -1156,10 +1156,10 @@ key_def_change_require_index_rebuid(struct key_def *old_key_def,
 {
 	if (old_key_def->type != new_key_def->type ||
 	    old_key_def->opts.is_unique != new_key_def->opts.is_unique ||
-	    key_part_cmp(old_key_def->parts,
-			 old_key_def->part_count,
-			 new_key_def->parts,
-			 new_key_def->part_count) != 0) {
+	    key_part_cmp(old_key_def->part_def.parts,
+			 old_key_def->part_def.part_count,
+			 new_key_def->part_def.parts,
+			 new_key_def->part_def.part_count) != 0) {
 		return true;
 	}
 	if (old_key_def->type == RTREE) {

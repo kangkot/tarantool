@@ -224,7 +224,7 @@ MemtxTree::random(uint32_t rnd) const
 struct tuple *
 MemtxTree::findByKey(const char *key, uint32_t part_count) const
 {
-	assert(key_def->opts.is_unique && part_count == key_def->part_count);
+	assert(key_def->opts.is_unique && part_count == key_def->part_def.part_count);
 
 	struct key_data key_data;
 	key_data.key = key;

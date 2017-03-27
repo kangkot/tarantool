@@ -76,7 +76,7 @@ VinylIndex::open()
 struct tuple*
 VinylIndex::findByKey(const char *key, uint32_t part_count) const
 {
-	assert(key_def->opts.is_unique && part_count == key_def->part_count);
+	assert(key_def->opts.is_unique && part_count == key_def->part_def.part_count);
 	/*
 	 * engine_tx might be empty, even if we are in txn context.
 	 * This can happen on a first-read statement.

@@ -345,13 +345,13 @@ vy_stmt_new_surrogate_from_key(struct tuple_format *format,
 	memset(iov, '#', sizeof(*iov) * field_count);
 #endif
 	uint32_t part_count = mp_decode_array(&key);
-	assert(part_count == def->part_count);
+	assert(part_count == def->part_def.part_count);
 	assert(part_count <= field_count);
-	uint32_t nulls_count = field_count - def->part_count;
+	uint32_t nulls_count = field_count - def->part_def.part_count;
 	uint32_t bsize = mp_sizeof_array(field_count) +
 		mp_sizeof_nil() * nulls_count;
 	for (uint32_t i = 0; i < part_count; ++i) {
-		const struct key_part *part = &def->parts[i];
+		const struct key_part *part = &def->part_def.parts[i];
 		assert(part->fieldno < field_count);
 		const char *svp = key;
 		iov[part->fieldno].iov_base = (char *) key;

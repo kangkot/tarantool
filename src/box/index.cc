@@ -126,16 +126,16 @@ key_validate(struct key_def *key_def, enum iterator_type type, const char *key,
 			}
 		}
 	} else {
-		if (part_count > key_def->part_count) {
+		if (part_count > key_def->part_def.part_count) {
 			diag_set(ClientError, ER_KEY_PART_COUNT,
-				 key_def->part_count, part_count);
+				 key_def->part_def.part_count, part_count);
 			return -1;
 		}
 
 		/* Partial keys are allowed only for TREE index type. */
-		if (key_def->type != TREE && part_count < key_def->part_count) {
+		if (key_def->type != TREE && part_count < key_def->part_def.part_count) {
 			diag_set(ClientError, ER_EXACT_MATCH,
-				 key_def->part_count, part_count);
+				 key_def->part_def.part_count, part_count);
 			return -1;
 		}
 		if (key_validate_parts(key_def, key, part_count))
@@ -149,8 +149,8 @@ primary_key_validate(struct key_def *key_def, const char *key,
 		     uint32_t part_count)
 {
 	assert(key != NULL || part_count == 0);
-	if (key_def->part_count != part_count) {
-		diag_set(ClientError, ER_EXACT_MATCH, key_def->part_count,
+	if (key_def->part_def.part_count != part_count) {
+		diag_set(ClientError, ER_EXACT_MATCH, key_def->part_def.part_count,
 			 part_count);
 		return -1;
 	}

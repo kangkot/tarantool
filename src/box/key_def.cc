@@ -160,8 +160,8 @@ schema_object_name(enum schema_object_type type)
 static void
 key_def_set_cmp(struct key_def *def)
 {
-	def->tuple_compare = tuple_compare_create(def);
-	def->tuple_compare_with_key = tuple_compare_with_key_create(def);
+	def->part_def.tuple_compare = tuple_compare_create(def);
+	def->part_def.tuple_compare_with_key = tuple_compare_with_key_create(def);
 }
 
 struct key_def *
@@ -197,20 +197,20 @@ key_def_new(uint32_t space_id, uint32_t iid, const char *name,
 	def->space_id = space_id;
 	def->iid = iid;
 	def->opts = *opts;
-	def->part_count = part_count;
+	def->part_def.part_count = part_count;
 	return def;
 }
 
 struct key_def *
 key_def_dup(const struct key_def *def)
 {
-	size_t sz = key_def_sizeof(def->part_count);
+	size_t sz = key_def_sizeof(def->part_def.part_count);
 	struct key_def *dup = (struct key_def *) malloc(sz);
 	if (dup == NULL) {
 		diag_set(OutOfMemory, sz, "malloc", "struct key_def");
 		return NULL;
 	}
-	memcpy(dup, def, key_def_sizeof(def->part_count));
+	memcpy(dup, def, key_def_sizeof(def->part_def.part_count));
 	rlist_create(&dup->link);
 	return dup;
 }
@@ -251,8 +251,8 @@ key_def_cmp(const struct key_def *key1, const struct key_def *key2)
 	if (key_opts_cmp(&key1->opts, &key2->opts))
 		return key_opts_cmp(&key1->opts, &key2->opts);
 
-	return key_part_cmp(key1->parts, key1->part_count,
-			    key2->parts, key2->part_count);
+	return key_part_cmp(key1->part_def.parts, key1->part_def.part_count,
+			    key2->part_def.parts, key2->part_def.part_count);
 }
 
 void
@@ -272,22 +272,22 @@ key_def_check(struct key_def *key_def)
 			  space_name(space),
 			  "primary key must be unique");
 	}
-	if (key_def->part_count == 0) {
+	if (key_def->part_def.part_count == 0) {
 		tnt_raise(ClientError, ER_MODIFY_INDEX,
 			  key_def->name,
 			  space_name(space),
 			  "part count must be positive");
 	}
-	if (key_def->part_count > BOX_INDEX_PART_MAX) {
+	if (key_def->part_def.part_count > BOX_INDEX_PART_MAX) {
 		tnt_raise(ClientError, ER_MODIFY_INDEX,
 			  key_def->name,
 			  space_name(space),
 			  "too many key parts");
 	}
-	for (uint32_t i = 0; i < key_def->part_count; i++) {
-		assert(key_def->parts[i].type > FIELD_TYPE_ANY &&
-		       key_def->parts[i].type < field_type_MAX);
-		if (key_def->parts[i].fieldno > BOX_INDEX_FIELD_MAX) {
+	for (uint32_t i = 0; i < key_def->part_def.part_count; i++) {
+		assert(key_def->part_def.parts[i].type > FIELD_TYPE_ANY &&
+		       key_def->part_def.parts[i].type < field_type_MAX);
+		if (key_def->part_def.parts[i].fieldno > BOX_INDEX_FIELD_MAX) {
 			tnt_raise(ClientError, ER_MODIFY_INDEX,
 				  key_def->name,
 				  space_name(space),
@@ -298,8 +298,8 @@ key_def_check(struct key_def *key_def)
 			 * Courtesy to a user who could have made
 			 * a typo.
 			 */
-			if (key_def->parts[i].fieldno ==
-			    key_def->parts[j].fieldno) {
+			if (key_def->part_def.parts[i].fieldno ==
+			    key_def->part_def.parts[j].fieldno) {
 				tnt_raise(ClientError, ER_MODIFY_INDEX,
 					  key_def->name,
 					  space_name(space),
@@ -316,18 +316,18 @@ void
 key_def_set_part(struct key_def *def, uint32_t part_no,
 		 uint32_t fieldno, enum field_type type)
 {
-	assert(part_no < def->part_count);
+	assert(part_no < def->part_def.part_count);
 	assert(type > FIELD_TYPE_ANY && type < field_type_MAX);
-	def->parts[part_no].fieldno = fieldno;
-	def->parts[part_no].type = type;
+	def->part_def.parts[part_no].fieldno = fieldno;
+	def->part_def.parts[part_no].type = type;
 	/**
 	 * When all parts are set, initialize the tuple
 	 * comparator function.
 	 */
 	/* Last part is set, initialize the comparators. */
 	bool all_parts_set = true;
-	for (uint32_t i = 0; i < def->part_count; i++) {
-		if (def->parts[i].type == FIELD_TYPE_ANY)
+	for (uint32_t i = 0; i < def->part_def.part_count; i++) {
+		if (def->part_def.parts[i].type == FIELD_TYPE_ANY)
 			all_parts_set = false;
 	}
 	if (all_parts_set)
@@ -337,8 +337,8 @@ key_def_set_part(struct key_def *def, uint32_t part_no,
 const struct key_part *
 key_def_find(const struct key_def *key_def, uint32_t fieldno)
 {
-	const struct key_part *part = key_def->parts;
-	const struct key_part *end = part + key_def->part_count;
+	const struct key_part *part = key_def->part_def.parts;
+	const struct key_part *end = part + key_def->part_def.part_count;
 	for (; part != end; part++) {
 		if (part->fieldno == fieldno)
 			return part;
@@ -349,13 +349,13 @@ key_def_find(const struct key_def *key_def, uint32_t fieldno)
 struct key_def *
 key_def_merge(const struct key_def *first, const struct key_def *second)
 {
-	uint32_t new_part_count = first->part_count + second->part_count;
+	uint32_t new_part_count = first->part_def.part_count + second->part_def.part_count;
 	/*
 	 * Find and remove part duplicates, i.e. parts counted
 	 * twice since they are present in both key defs.
 	 */
-	const struct key_part *part = second->parts;
-	const struct key_part *end = part + second->part_count;
+	const struct key_part *part = second->part_def.parts;
+	const struct key_part *end = part + second->part_def.part_count;
 	for (; part != end; part++) {
 		if (key_def_find(first, part->fieldno))
 			--new_part_count;
@@ -369,14 +369,14 @@ key_def_merge(const struct key_def *first, const struct key_def *second)
 	/* Write position in the new key def. */
 	uint32_t pos = 0;
 	/* Append first key def's parts to the new key_def. */
-	part = first->parts;
-	end = part + first->part_count;
+	part = first->part_def.parts;
+	end = part + first->part_def.part_count;
 	for (; part != end; part++)
 	     key_def_set_part(new_def, pos++, part->fieldno, part->type);
 
 	/* Set-append second key def's part to the new key def. */
-	part = second->parts;
-	end = part + second->part_count;
+	part = second->part_def.parts;
+	end = part + second->part_def.part_count;
 	for (; part != end; part++) {
 		if (key_def_find(first, part->fieldno))
 			continue;
@@ -393,7 +393,7 @@ key_validate_parts(struct key_def *key_def, const char *key,
 		enum mp_type mp_type = mp_typeof(*key);
 		mp_next(&key);
 
-		if (key_mp_type_validate(key_def->parts[part].type, mp_type,
+		if (key_mp_type_validate(key_def->part_def.parts[part].type, mp_type,
 					 ER_KEY_PART_TYPE, part))
 			return -1;
 	}

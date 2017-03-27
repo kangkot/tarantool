@@ -335,7 +335,7 @@ MemtxSpace::prepareUpsert(struct txn_stmt *stmt, struct space *space,
 	Index *index = space->index[0];
 
 	struct key_def *key_def = index->key_def;
-	uint32_t part_count = index->key_def->part_count;
+	uint32_t part_count = index->key_def->part_def.part_count;
 	/* Extract the primary key from tuple. */
 	const char *key = tuple_extract_key_raw(request->tuple,
 						request->tuple_end,

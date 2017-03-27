@@ -617,12 +617,12 @@ tuple_hash_slow_path(const struct tuple *tuple, const struct key_def *key_def);
 static inline uint32_t
 tuple_hash(const struct tuple *tuple, const struct key_def *key_def)
 {
-	const struct key_part *part = key_def->parts;
+	const struct key_part *part = key_def->part_def.parts;
 	/*
 	 * Speed up the simplest case when we have a
 	 * single-part hash_table over an integer field.
 	 */
-	if (key_def->part_count == 1 && part->type == FIELD_TYPE_UNSIGNED) {
+	if (key_def->part_def.part_count == 1 && part->type == FIELD_TYPE_UNSIGNED) {
 		const char *field = tuple_field(tuple, part->fieldno);
 		uint64_t val = mp_decode_uint(&field);
 		if (likely(val <= UINT32_MAX))
@@ -649,10 +649,10 @@ key_hash_slow_path(const char *key, const struct key_def *key_def);
 static inline uint32_t
 key_hash(const char *key, const struct key_def *key_def)
 {
-	const struct key_part *part = key_def->parts;
+	const struct key_part *part = key_def->part_def.parts;
 
 	/* see tuple_hash */
-	if (key_def->part_count == 1 && part->type == FIELD_TYPE_UNSIGNED) {
+	if (key_def->part_def.part_count == 1 && part->type == FIELD_TYPE_UNSIGNED) {
 		uint64_t val = mp_decode_uint(&key);
 		if (likely(val <= UINT32_MAX))
 			return val;

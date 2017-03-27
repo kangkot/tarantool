@@ -233,6 +233,17 @@ typedef int (*tuple_compare_t)(const struct tuple *tuple_a,
 			   const struct tuple *tuple_b,
 			   const struct key_def *key_def);
 
+struct part_def {
+	/** tuple <-> tuple comparison function */
+	tuple_compare_t tuple_compare;
+	/** tuple <-> key comparison function */
+	tuple_compare_with_key_t tuple_compare_with_key;
+	/** The size of the 'parts' array. */
+	uint32_t part_count;
+	/** Description of parts of a multipart index. */
+	struct key_part parts[];
+};
+
 /* Descriptor of a multipart key. */
 struct key_def {
 	/* A link in key list. */
@@ -246,14 +257,7 @@ struct key_def {
 	/** Index type. */
 	enum index_type type;
 	struct key_opts opts;
-	/** tuple <-> tuple comparison function */
-	tuple_compare_t tuple_compare;
-	/** tuple <-> key comparison function */
-	tuple_compare_with_key_t tuple_compare_with_key;
-	/** The size of the 'parts' array. */
-	uint32_t part_count;
-	/** Description of parts of a multipart index. */
-	struct key_part parts[];
+	struct part_def part_def;
 };
 
 struct key_def *
@@ -408,8 +412,8 @@ static inline void
 key_def_copy(struct key_def *to, const struct key_def *from)
 {
 	struct rlist save_link = to->link;
-	int part_count = (to->part_count < from->part_count ?
-			  to->part_count : from->part_count);
+	int part_count = (to->part_def.part_count < from->part_def.part_count ?
+			  to->part_def.part_count : from->part_def.part_count);
 	size_t size  = (sizeof(struct key_def) +
 			sizeof(struct key_part) * part_count);
 	memcpy(to, from, size);
@@ -466,8 +470,8 @@ key_validate_parts(struct key_def *key_def, const char *key,
 static inline bool
 key_def_is_sequential(const struct key_def *key_def)
 {
-	for (uint32_t part_id = 0; part_id < key_def->part_count; part_id++) {
-		if (key_def->parts[part_id].fieldno != part_id)
+	for (uint32_t part_id = 0; part_id < key_def->part_def.part_count; part_id++) {
+		if (key_def->part_def.parts[part_id].fieldno != part_id)
 			return false;
 	}
 	return true;

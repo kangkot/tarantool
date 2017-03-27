@@ -50,7 +50,7 @@ static inline bool
 equal_key(struct tuple *tuple, const char *key,
 		const struct key_def *key_def)
 {
-	return tuple_compare_with_key(tuple, key, key_def->part_count,
+	return tuple_compare_with_key(tuple, key, key_def->part_def.part_count,
 					       key_def) == 0;
 }
 
@@ -175,7 +175,7 @@ MemtxHash::random(uint32_t rnd) const
 struct tuple *
 MemtxHash::findByKey(const char *key, uint32_t part_count) const
 {
-	assert(key_def->opts.is_unique && part_count == key_def->part_count);
+	assert(key_def->opts.is_unique && part_count == key_def->part_def.part_count);
 	(void) part_count;
 
 	struct tuple *ret = NULL;

@@ -1279,7 +1279,7 @@ vy_tx_track(struct vy_tx *tx, struct vy_index *index,
 	if (tx->is_in_read_view)
 		return 0; /* no reason to track reads */
 	uint32_t part_count = tuple_field_count(key);
-	if (part_count >= index->key_def->part_count) {
+	if (part_count >= index->key_def->part_def.part_count) {
 		struct txv *v =
 			write_set_search_key(&tx->write_set, index, key);
 		if (v != NULL && (vy_stmt_type(v->stmt) == IPROTO_REPLACE ||
@@ -1776,7 +1776,7 @@ vy_range_tree_find_by_key(vy_range_tree_t *tree,
 		range = vy_range_tree_psearch(tree, key);
 		/* switch to previous for case (4) */
 		if (range != NULL && range->begin != NULL &&
-		    key_field_count < key_def->part_count &&
+		    key_field_count < key_def->part_def.part_count &&
 		    vy_stmt_compare_with_raw_key(key, range->begin,
 						 key_def) == 0)
 			range = vy_range_tree_prev(tree, range);
@@ -5598,7 +5598,7 @@ vy_index_new(struct vy_env *e, struct key_def *user_key_def,
 		0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 50, 100,
 	};
 
-	assert(user_key_def->part_count > 0);
+	assert(user_key_def->part_def.part_count > 0);
 	struct vy_index *pk = NULL;
 	if (user_key_def->iid > 0) {
 		pk = vy_index_find(space, 0);
@@ -5670,8 +5670,8 @@ vy_index_new(struct vy_env *e, struct key_def *user_key_def,
 		 * Calculate the bitmask of columns used in this
 		 * index.
 		 */
-		for (uint32_t i = 0; i < user_key_def->part_count; ++i) {
-			uint32_t fieldno = user_key_def->parts[i].fieldno;
+		for (uint32_t i = 0; i < user_key_def->part_def.part_count; ++i) {
+			uint32_t fieldno = user_key_def->part_def.parts[i].fieldno;
 			if (fieldno >= 64) {
 				index->column_mask = UINT64_MAX;
 				break;
@@ -6111,7 +6111,7 @@ vy_index_get(struct vy_tx *tx, struct vy_index *index, const char *key,
 	 */
 	assert(tx == NULL || tx->state == VINYL_TX_READY);
 	struct tuple *vykey;
-	assert(part_count <= index->key_def->part_count);
+	assert(part_count <= index->key_def->part_def.part_count);
 	vykey = vy_stmt_new_select(e->key_format, key, part_count);
 	if (vykey == NULL)
 		return -1;
@@ -6163,8 +6163,8 @@ vy_check_dup_key(struct vy_tx *tx, struct vy_index *idx, const char *key,
 	 * but use only  the secondary key fields (partial key look
 	 * up) to check for duplicates.
          */
-	assert(part_count == idx->key_def->part_count);
-	if (vy_index_get(tx, idx, key, idx->user_key_def->part_count, &found))
+	assert(part_count == idx->key_def->part_def.part_count);
+	if (vy_index_get(tx, idx, key, idx->user_key_def->part_def.part_count, &found))
 		return -1;
 
 	if (found) {
@@ -6411,7 +6411,7 @@ vy_unique_key_validate(struct vy_index *index, const char *key,
 	 * supplied key parts uniquely identify the tuple, as long
 	 * as the index is unique.
 	 */
-	uint32_t original_part_count = index->user_key_def->part_count;
+	uint32_t original_part_count = index->user_key_def->part_def.part_count;
 	if (original_part_count != part_count) {
 		diag_set(ClientError, ER_EXACT_MATCH,
 			 original_part_count, part_count);
@@ -6449,7 +6449,7 @@ vy_index_full_by_stmt(struct vy_tx *tx, struct vy_index *index,
 		return -1;
 	/* Fetch the tuple from the primary index. */
 	uint32_t part_count = mp_decode_array(&pkey);
-	assert(part_count == to_pk->part_count);
+	assert(part_count == to_pk->part_def.part_count);
 	struct space *space = index->space;
 	struct vy_index *pk = vy_index_find(space, 0);
 	assert(pk != NULL);
@@ -7166,7 +7166,7 @@ vy_get(struct vy_tx *tx, struct vy_index *index, const char *key,
 	assert(tx == NULL || tx->state == VINYL_TX_READY);
 	assert(result != NULL);
 	struct tuple *vyresult = NULL;
-	assert(part_count <= index->key_def->part_count);
+	assert(part_count <= index->key_def->part_def.part_count);
 	if (vy_index_full_by_key(tx, index, key, part_count, &vyresult))
 		return -1;
 	if (vyresult == NULL)
@@ -8151,7 +8151,7 @@ vy_run_iterator_start(struct vy_run_iterator *itr, struct tuple **ret)
 
 	struct key_def *user_key_def = itr->index->user_key_def;
 	if (itr->run->info.has_bloom && itr->iterator_type == ITER_EQ &&
-	    tuple_field_count(itr->key) >= user_key_def->part_count) {
+	    tuple_field_count(itr->key) >= user_key_def->part_def.part_count) {
 		uint32_t hash;
 		if (vy_stmt_type(itr->key) == IPROTO_SELECT) {
 			const char *data = tuple_data(itr->key);
@@ -8930,11 +8930,11 @@ vy_merge_iterator_open(struct vy_merge_iterator *itr, struct vy_index *index,
 	itr->skipped_start = 0;
 	itr->curr_stmt = NULL;
 	itr->is_one_value = iterator_type == ITER_EQ &&
-		tuple_field_count(key) >= index->key_def->part_count;
+		tuple_field_count(key) >= index->key_def->part_def.part_count;
 	itr->unique_optimization =
 		(iterator_type == ITER_EQ || iterator_type == ITER_GE ||
 		 iterator_type == ITER_LE) &&
-		tuple_field_count(key) >= index->key_def->part_count;
+		tuple_field_count(key) >= index->key_def->part_def.part_count;
 	itr->search_started = false;
 	itr->range_ended = false;
 }
@@ -10388,7 +10388,7 @@ vy_cursor_new(struct vy_tx *tx, struct vy_index *index, const char *key,
 		diag_set(OutOfMemory, sizeof(*c), "cursor", "cursor pool");
 		return NULL;
 	}
-	assert(part_count <= index->key_def->part_count);
+	assert(part_count <= index->key_def->part_def.part_count);
 	c->key = vy_stmt_new_select(e->key_format, key, part_count);
 	if (c->key == NULL) {
 		mempool_free(&e->cursor_pool, c);
@@ -10421,7 +10421,7 @@ vy_cursor_new(struct vy_tx *tx, struct vy_index *index, const char *key,
 	case ITER_REQ: {
 		struct key_def *def = index->key_def;
 		/* point-lookup iterator (optimization) */
-		if (def->opts.is_unique && part_count == def->part_count) {
+		if (def->opts.is_unique && part_count == def->part_def.part_count) {
 			iterator_type = ITER_EQ;
 		} else {
 			c->need_check_eq = true;

@@ -86,7 +86,7 @@ static inline int
 tuple_compare(const struct tuple *tuple_a, const struct tuple *tuple_b,
 	      const struct key_def *key_def)
 {
-	return key_def->tuple_compare(tuple_a, tuple_b, key_def);
+	return key_def->part_def.tuple_compare(tuple_a, tuple_b, key_def);
 }
 
 /**
@@ -104,7 +104,7 @@ static inline int
 tuple_compare_with_key(const struct tuple *tuple, const char *key,
 		       uint32_t part_count, const struct key_def *key_def)
 {
-	return key_def->tuple_compare_with_key(tuple, key, part_count,
+	return key_def->part_def.tuple_compare_with_key(tuple, key, part_count,
 					       key_def);
 }
 

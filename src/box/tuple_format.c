@@ -59,8 +59,8 @@ tuple_format_create(struct tuple_format *format, struct rlist *key_list)
 	rlist_foreach_entry(key_def, key_list, link) {
 
 		bool is_sequential = key_def_is_sequential(key_def);
-		const struct key_part *part = key_def->parts;
-		const struct key_part *parts_end = part + key_def->part_count;
+		const struct key_part *part = key_def->part_def.parts;
+		const struct key_part *parts_end = part + key_def->part_def.part_count;
 
 		for (; part < parts_end; part++) {
 			assert(part->fieldno < format->field_count);
@@ -163,8 +163,8 @@ tuple_format_alloc(struct rlist *key_list)
 
 	/* find max max field no */
 	rlist_foreach_entry(key_def, key_list, link) {
-		struct key_part *part = key_def->parts;
-		struct key_part *pend = part + key_def->part_count;
+		struct key_part *part = key_def->part_def.parts;
+		struct key_part *pend = part + key_def->part_def.part_count;
 		key_count++;
 		for (; part < pend; part++)
 			max_fieldno = MAX(max_fieldno, part->fieldno);
