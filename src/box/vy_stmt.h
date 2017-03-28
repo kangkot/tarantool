@@ -243,11 +243,11 @@ vy_stmt_is_region_allocated(const struct tuple *stmt)
  */
 static inline int
 vy_key_compare(const struct tuple *a, const struct tuple *b,
-	       const struct key_def *key_def)
+	       const struct part_def *part_def)
 {
 	assert(vy_stmt_type(a) == IPROTO_SELECT);
 	assert(vy_stmt_type(b) == IPROTO_SELECT);
-	return key_compare(tuple_data(a), tuple_data(b), key_def);
+	return key_compare(tuple_data(a), tuple_data(b), part_def);
 }
 
 /**
@@ -264,7 +264,7 @@ vy_key_compare(const struct tuple *a, const struct tuple *b,
  */
 static inline int
 vy_tuple_compare(const struct tuple *a, const struct tuple *b,
-		 const struct key_def *key_def)
+		 const struct part_def *part_def)
 {
 	assert(vy_stmt_type(a) == IPROTO_REPLACE ||
 	       vy_stmt_type(a) == IPROTO_UPSERT ||
@@ -272,7 +272,7 @@ vy_tuple_compare(const struct tuple *a, const struct tuple *b,
 	assert(vy_stmt_type(b) == IPROTO_REPLACE ||
 	       vy_stmt_type(b) == IPROTO_UPSERT ||
 	       vy_stmt_type(b) == IPROTO_DELETE);
-	return tuple_compare(a, b, key_def);
+	return tuple_compare(a, b, part_def);
 }
 
 /**
@@ -291,26 +291,26 @@ vy_tuple_compare(const struct tuple *a, const struct tuple *b,
  */
 static inline int
 vy_tuple_compare_with_raw_key(const struct tuple *tuple, const char *key,
-			      const struct key_def *key_def)
+			      const struct part_def *part_def)
 {
 	uint32_t part_count = mp_decode_array(&key);
-	return tuple_compare_with_key(tuple, key, part_count, key_def);
+	return tuple_compare_with_key(tuple, key, part_count, part_def);
 }
 
 /** @sa vy_tuple_compare_with_raw_key(). */
 static inline int
 vy_tuple_compare_with_key(const struct tuple *tuple, const struct tuple *key,
-			  const struct key_def *key_def)
+			  const struct part_def *part_def)
 {
 	const char *key_mp = tuple_data(key);
 	uint32_t part_count = mp_decode_array(&key_mp);
-	return tuple_compare_with_key(tuple, key_mp, part_count, key_def);
+	return tuple_compare_with_key(tuple, key_mp, part_count, part_def);
 }
 
 /** @sa tuple_compare. */
 static inline int
 vy_stmt_compare(const struct tuple *a, const struct tuple *b,
-		const struct key_def *key_def)
+		const struct part_def *part_def)
 {
 	bool a_is_tuple = vy_stmt_type(a) == IPROTO_REPLACE ||
 			  vy_stmt_type(a) == IPROTO_UPSERT ||
@@ -319,27 +319,27 @@ vy_stmt_compare(const struct tuple *a, const struct tuple *b,
 			  vy_stmt_type(b) == IPROTO_UPSERT ||
 			  vy_stmt_type(b) == IPROTO_DELETE;
 	if (a_is_tuple && b_is_tuple) {
-		return vy_tuple_compare(a, b, key_def);
+		return vy_tuple_compare(a, b, part_def);
 	} else if (a_is_tuple && !b_is_tuple) {
-		return vy_tuple_compare_with_key(a, b, key_def);
+		return vy_tuple_compare_with_key(a, b, part_def);
 	} else if (!a_is_tuple && b_is_tuple) {
-		return -vy_tuple_compare_with_key(b, a, key_def);
+		return -vy_tuple_compare_with_key(b, a, part_def);
 	} else {
 		assert(!a_is_tuple && !b_is_tuple);
-		return vy_key_compare(a, b, key_def);
+		return vy_key_compare(a, b, part_def);
 	}
 }
 
 /** @sa tuple_compare_with_raw_key. */
 static inline int
 vy_stmt_compare_with_raw_key(const struct tuple *stmt, const char *key,
-			     const struct key_def *key_def)
+			     const struct part_def *part_def)
 {
 	if (vy_stmt_type(stmt) == IPROTO_REPLACE ||
 	    vy_stmt_type(stmt) == IPROTO_UPSERT ||
 	    vy_stmt_type(stmt) == IPROTO_DELETE)
-		return vy_tuple_compare_with_raw_key(stmt, key, key_def);
-	return key_compare(tuple_data(stmt), key, key_def);
+		return vy_tuple_compare_with_raw_key(stmt, key, part_def);
+	return key_compare(tuple_data(stmt), key, part_def);
 }
 
 /**

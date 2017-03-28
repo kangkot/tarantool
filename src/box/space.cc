@@ -119,7 +119,14 @@ space_new(struct space_def *def, struct rlist *key_list)
 				      index_count * sizeof(Index *));
 	space->def = *def;
 	Engine *engine = engine_find(def->engine_name);
-	space->format = tuple_format_new(engine->format, key_list, 0);
+	struct part_def **keys;
+	keys = (struct part_def **)region_alloc_xc(&fiber()->gc,
+						   sizeof(*keys) * index_count);
+	uint32_t key_no = 0;
+	rlist_foreach_entry(key_def, key_list, link) {
+		keys[key_no++] = &key_def->part_def;
+	}
+	space->format = tuple_format_new(engine->format, keys, index_count, 0);
 	if (space->format == NULL)
 		diag_raise();
 	space->has_unique_secondary_key = has_unique_secondary_key;
@@ -207,7 +214,7 @@ space_check_update(struct space *space,
 {
 	assert(space->index_count > 0);
 	Index *index = space->index[0];
-	if (tuple_compare(old_tuple, new_tuple, index->key_def))
+	if (tuple_compare(old_tuple, new_tuple, &index->key_def->part_def))
 		tnt_raise(ClientError, ER_CANT_UPDATE_PRIMARY_KEY,
 			  index_name(index), space_name(space));
 }

@@ -131,7 +131,7 @@ vy_cache_new(struct vy_cache_env *env, struct key_def *key_def)
 	cache->env = env;
 	cache->key_def = key_def;
 	cache->version = 1;
-	vy_cache_tree_create(&cache->cache_tree, key_def,
+	vy_cache_tree_create(&cache->cache_tree, &key_def->part_def,
 			     vy_cache_tree_page_alloc,
 			     vy_cache_tree_page_free, env);
 	return cache;
@@ -525,7 +525,8 @@ vy_cache_iterator_start(struct vy_cache_iterator *itr, struct tuple **ret,
 							&itr->curr_pos);
 		candidate = (*entry)->stmt;
 		if (itr->iterator_type == ITER_EQ &&
-		    vy_stmt_compare(key, candidate, itr->cache->key_def))
+		    vy_stmt_compare(key, candidate,
+				    &itr->cache->key_def->part_def))
 			return;
 	}
 	itr->curr_stmt = candidate;
@@ -616,7 +617,8 @@ vy_cache_iterator_next_key(struct vy_stmt_iterator *vitr,
 	}
 
 	if (itr->iterator_type == ITER_EQ &&
-	    vy_stmt_compare(itr->key, itr->curr_stmt, itr->cache->key_def)) {
+	    vy_stmt_compare(itr->key, itr->curr_stmt,
+			    &itr->cache->key_def->part_def)) {
 		tuple_unref(itr->curr_stmt);
 		itr->curr_stmt = NULL;
 		struct vy_cache_entry **entry =
@@ -644,7 +646,7 @@ vy_cache_iterator_next_key(struct vy_stmt_iterator *vitr,
 							&itr->curr_pos);
 		struct tuple *stmt = (*entry)->stmt;
 		if (itr->iterator_type == ITER_EQ &&
-		    vy_stmt_compare(key, stmt, itr->cache->key_def))
+		    vy_stmt_compare(key, stmt, &itr->cache->key_def->part_def))
 			return 0;
 		itr->curr_stmt = stmt;
 		tuple_ref(itr->curr_stmt);
@@ -688,7 +690,7 @@ vy_cache_iterator_restore(struct vy_stmt_iterator *vitr,
 	ERROR_INJECT(ERRINJ_VY_READ_PAGE_TIMEOUT,
 		     { itr->search_started = true; return 0; });
 
-	struct key_def *def = itr->cache->key_def;
+	struct part_def *def = &itr->cache->key_def->part_def;
 	struct vy_cache_tree *tree = &itr->cache->cache_tree;
 	int dir = iterator_direction(itr->iterator_type);
 	if (itr->curr_stmt != NULL) {

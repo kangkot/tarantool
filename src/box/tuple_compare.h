@@ -49,13 +49,13 @@ struct tuple;
  * @returns a comparision function
  */
 tuple_compare_t
-tuple_compare_create(const struct key_def *key_def);
+tuple_compare_create(const struct part_def *part_def);
 
 /**
  * @copydoc tuple_compare_create()
  */
 tuple_compare_with_key_t
-tuple_compare_with_key_create(const struct key_def *key_def);
+tuple_compare_with_key_create(const struct part_def *part_def);
 
 /**
  * Compare keys using the key definition.
@@ -71,7 +71,7 @@ tuple_compare_with_key_create(const struct key_def *key_def);
  */
 int
 key_compare(const char *key_a, const char *key_b,
-	    const struct key_def *key_def);
+	    const struct part_def *part_def);
 
 /**
  * Compare tuples using the key definition.
@@ -84,9 +84,9 @@ key_compare(const char *key_a, const char *key_b,
  */
 static inline int
 tuple_compare(const struct tuple *tuple_a, const struct tuple *tuple_b,
-	      const struct key_def *key_def)
+	      const struct part_def *part_def)
 {
-	return key_def->part_def.tuple_compare(tuple_a, tuple_b, key_def);
+	return part_def->tuple_compare(tuple_a, tuple_b, part_def);
 }
 
 /**
@@ -102,10 +102,9 @@ tuple_compare(const struct tuple *tuple_a, const struct tuple *tuple_b,
  */
 static inline int
 tuple_compare_with_key(const struct tuple *tuple, const char *key,
-		       uint32_t part_count, const struct key_def *key_def)
+		       uint32_t part_count, const struct part_def *part_def)
 {
-	return key_def->part_def.tuple_compare_with_key(tuple, key, part_count,
-					       key_def);
+	return part_def->tuple_compare_with_key(tuple, key, part_count, part_def);
 }
 
 #if defined(__cplusplus)

@@ -158,10 +158,10 @@ schema_object_name(enum schema_object_type type)
 }
 
 static void
-key_def_set_cmp(struct key_def *def)
+part_def_set_cmp(struct part_def *def)
 {
-	def->part_def.tuple_compare = tuple_compare_create(def);
-	def->part_def.tuple_compare_with_key = tuple_compare_with_key_create(def);
+	def->tuple_compare = tuple_compare_create(def);
+	def->tuple_compare_with_key = tuple_compare_with_key_create(def);
 }
 
 struct key_def *
@@ -331,7 +331,7 @@ key_def_set_part(struct key_def *def, uint32_t part_no,
 			all_parts_set = false;
 	}
 	if (all_parts_set)
-		key_def_set_cmp(def);
+		part_def_set_cmp(&def->part_def);
 }
 
 const struct key_part *

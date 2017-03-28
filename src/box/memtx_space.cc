@@ -398,7 +398,8 @@ MemtxSpace::prepareUpsert(struct txn_stmt *stmt, struct space *space,
 		tuple_ref(stmt->new_tuple);
 
 		Index *pk = space->index[0];
-		if (tuple_compare(stmt->old_tuple, stmt->new_tuple, pk->key_def)) {
+		if (tuple_compare(stmt->old_tuple, stmt->new_tuple,
+				  &pk->key_def->part_def)) {
 			/* Primary key is changed: log error and do nothing. */
 			diag_set(ClientError, ER_CANT_UPDATE_PRIMARY_KEY,
 				 pk->key_def->name, space_name(space));

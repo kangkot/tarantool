@@ -41,23 +41,23 @@
 
 static inline bool
 equal(struct tuple *tuple_a, struct tuple *tuple_b,
-	    const struct key_def *key_def)
+	    const struct part_def *part_def)
 {
-	return tuple_compare(tuple_a, tuple_b, key_def) == 0;
+	return tuple_compare(tuple_a, tuple_b, part_def) == 0;
 }
 
 static inline bool
 equal_key(struct tuple *tuple, const char *key,
-		const struct key_def *key_def)
+		const struct part_def *part_def)
 {
-	return tuple_compare_with_key(tuple, key, key_def->part_def.part_count,
-					       key_def) == 0;
+	return tuple_compare_with_key(tuple, key, part_def->part_count,
+					       part_def) == 0;
 }
 
 #define LIGHT_NAME _index
 #define LIGHT_DATA_TYPE struct tuple *
 #define LIGHT_KEY_TYPE const char *
-#define LIGHT_CMP_ARG_TYPE struct key_def *
+#define LIGHT_CMP_ARG_TYPE struct part_def *
 #define LIGHT_EQUAL(a, b, c) equal(a, b, c)
 #define LIGHT_EQUAL_KEY(a, b, c) equal_key(a, b, c)
 #define HASH_INDEX_EXTENT_SIZE MEMTX_EXTENT_SIZE
@@ -132,7 +132,7 @@ MemtxHash::MemtxHash(struct key_def *key_def_arg)
 	}
 	light_index_create(hash_table, HASH_INDEX_EXTENT_SIZE,
 			   memtx_index_extent_alloc, memtx_index_extent_free,
-			   NULL, this->key_def);
+			   NULL, &this->key_def->part_def);
 }
 
 MemtxHash::~MemtxHash()

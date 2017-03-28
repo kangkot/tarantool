@@ -70,9 +70,9 @@ struct vy_cache_entry {
  */
 static inline int
 vy_cache_tree_cmp(struct vy_cache_entry *a,
-		  struct vy_cache_entry *b, struct key_def *key_def)
+		  struct vy_cache_entry *b, struct part_def *part_def)
 {
-	return vy_stmt_compare(a->stmt, b->stmt, key_def);
+	return vy_stmt_compare(a->stmt, b->stmt, part_def);
 }
 
 /**
@@ -80,9 +80,9 @@ vy_cache_tree_cmp(struct vy_cache_entry *a,
  */
 static inline int
 vy_cache_tree_key_cmp(struct vy_cache_entry *a,
-		      const struct tuple *b, struct key_def *key_def)
+		      const struct tuple *b, struct part_def *part_def)
 {
-	return vy_stmt_compare(a->stmt, b, key_def);
+	return vy_stmt_compare(a->stmt, b, part_def);
 }
 
 #define VY_CACHE_TREE_EXTENT_SIZE (16 * 1024)
@@ -94,7 +94,7 @@ vy_cache_tree_key_cmp(struct vy_cache_entry *a,
 #define BPS_TREE_COMPARE_KEY(a, b, index) vy_cache_tree_key_cmp(a, b, index)
 #define bps_tree_elem_t struct vy_cache_entry *
 #define bps_tree_key_t const struct tuple *
-#define bps_tree_arg_t struct key_def *
+#define bps_tree_arg_t struct part_def *
 #define BPS_TREE_NO_DEBUG
 
 #include "salad/bps_tree.h"

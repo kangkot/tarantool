@@ -222,16 +222,16 @@ key_opts_cmp(const struct key_opts *o1, const struct key_opts *o2)
 	return 0;
 }
 
-struct key_def;
+struct part_def;
 struct tuple;
 
 typedef int (*tuple_compare_with_key_t)(const struct tuple *tuple_a,
 			      const char *key,
 			      uint32_t part_count,
-			      const struct key_def *key_def);
+			      const struct part_def *part_def);
 typedef int (*tuple_compare_t)(const struct tuple *tuple_a,
 			   const struct tuple *tuple_b,
-			   const struct key_def *key_def);
+			   const struct part_def *part_def);
 
 struct part_def {
 	/** tuple <-> tuple comparison function */
@@ -468,10 +468,10 @@ key_validate_parts(struct key_def *key_def, const char *key,
  * @retval false otherwise
  */
 static inline bool
-key_def_is_sequential(const struct key_def *key_def)
+part_def_is_sequential(const struct part_def *part_def)
 {
-	for (uint32_t part_id = 0; part_id < key_def->part_def.part_count; part_id++) {
-		if (key_def->part_def.parts[part_id].fieldno != part_id)
+	for (uint32_t part_id = 0; part_id < part_def->part_count; part_id++) {
+		if (part_def->parts[part_id].fieldno != part_id)
 			return false;
 	}
 	return true;

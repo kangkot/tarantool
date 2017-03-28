@@ -309,16 +309,16 @@ tuple_compare_slowpath_raw(const struct tuple_format *format_a,
 			   const char *tuple_a, const uint32_t *field_map_a,
 			   const struct tuple_format *format_b,
 			   const char *tuple_b, const uint32_t *field_map_b,
-			   const struct key_def *key_def)
+			   const struct part_def *part_def)
 {
-	const struct key_part *part = key_def->part_def.parts;
-	if (key_def->part_def.part_count == 1 && part->fieldno == 0) {
+	const struct key_part *part = part_def->parts;
+	if (part_def->part_count == 1 && part->fieldno == 0) {
 		mp_decode_array(&tuple_a);
 		mp_decode_array(&tuple_b);
 		return tuple_compare_field(tuple_a, tuple_b, part->type);
 	}
 
-	const struct key_part *end = part + key_def->part_def.part_count;
+	const struct key_part *end = part + part_def->part_count;
 	const char *field_a;
 	const char *field_b;
 	int r = 0;
@@ -337,14 +337,14 @@ tuple_compare_slowpath_raw(const struct tuple_format *format_a,
 
 static int
 tuple_compare_slowpath(const struct tuple *tuple_a, const struct tuple *tuple_b,
-		       const struct key_def *key_def)
+		       const struct part_def *part_def)
 {
 	return tuple_compare_slowpath_raw(tuple_format(tuple_a),
 					  tuple_data(tuple_a),
 					  tuple_field_map(tuple_a),
 					  tuple_format(tuple_b),
 					  tuple_data(tuple_b),
-					  tuple_field_map(tuple_b), key_def);
+					  tuple_field_map(tuple_b), part_def);
 }
 
 static inline int
@@ -369,58 +369,58 @@ key_compare_parts(const char *key_a, const char *key_b, uint32_t part_count,
 
 int
 key_compare(const char *key_a, const char *key_b,
-	    const struct key_def *key_def)
+	    const struct part_def *part_def)
 {
 	uint32_t part_count_a = mp_decode_array(&key_a);
 	uint32_t part_count_b = mp_decode_array(&key_b);
-	assert(part_count_a <= key_def->part_def.part_count);
-	assert(part_count_b <= key_def->part_def.part_count);
+	assert(part_count_a <= part_def->part_count);
+	assert(part_count_b <= part_def->part_count);
 	uint32_t part_count = MIN(part_count_a, part_count_b);
-	assert(part_count <= key_def->part_def.part_count);
-	return key_compare_parts(key_a, key_b, part_count, key_def->part_def.parts);
+	assert(part_count <= part_def->part_count);
+	return key_compare_parts(key_a, key_b, part_count, part_def->parts);
 }
 
 static int
 tuple_compare_with_key_sequential(const struct tuple *tuple, const char *key,
 				  uint32_t part_count,
-				  const struct key_def *key_def)
+				  const struct part_def *part_def)
 {
-	assert(key_def_is_sequential(key_def));
+	assert(part_def_is_sequential(part_def));
 	const char *tuple_key = tuple_data(tuple);
 	uint32_t tuple_field_count = mp_decode_array(&tuple_key);
-	assert(tuple_field_count >= key_def->part_def.part_count);
-	assert(part_count <= key_def->part_def.part_count);
+	assert(tuple_field_count >= part_def->part_count);
+	assert(part_count <= part_def->part_count);
 	(void) tuple_field_count;
-	return key_compare_parts(tuple_key, key, part_count, key_def->part_def.parts);
+	return key_compare_parts(tuple_key, key, part_count, part_def->parts);
 }
 
 static int
 tuple_compare_sequential(const struct tuple *tuple_a,
 			 const struct tuple *tuple_b,
-			 const struct key_def *key_def)
+			 const struct part_def *part_def)
 {
-	assert(key_def_is_sequential(key_def));
+	assert(part_def_is_sequential(part_def));
 	const char *key_a = tuple_data(tuple_a);
 	uint32_t field_count_a = mp_decode_array(&key_a);
-	assert(field_count_a >= key_def->part_def.part_count);
+	assert(field_count_a >= part_def->part_count);
 	(void) field_count_a;
 	const char *key_b = tuple_data(tuple_b);
 	uint32_t field_count_b = mp_decode_array(&key_b);
-	assert(field_count_b >= key_def->part_def.part_count);
+	assert(field_count_b >= part_def->part_count);
 	(void) field_count_b;
-	return key_compare_parts(key_a, key_b, key_def->part_def.part_count,
-				 key_def->part_def.parts);
+	return key_compare_parts(key_a, key_b, part_def->part_count,
+				 part_def->parts);
 }
 
 static inline int
 tuple_compare_with_key_slowpath_raw(const struct tuple_format *format,
 				    const char *tuple, const uint32_t *field_map,
 				    const char *key, uint32_t part_count,
-				    const struct key_def *key_def)
+				    const struct part_def *part_def)
 {
 	assert(key != NULL || part_count == 0);
-	assert(part_count <= key_def->part_def.part_count);
-	const struct key_part *part = key_def->part_def.parts;
+	assert(part_count <= part_def->part_count);
+	const struct key_part *part = part_def->parts;
 	if (likely(part_count == 1)) {
 		const char *field;
 		field = tuple_field_raw(format, tuple, field_map,
@@ -428,7 +428,7 @@ tuple_compare_with_key_slowpath_raw(const struct tuple_format *format,
 		return tuple_compare_field(field, key, part->type);
 	}
 
-	const struct key_part *end = part + MIN(part_count, key_def->part_def.part_count);
+	const struct key_part *end = part + MIN(part_count, part_def->part_count);
 	int r = 0; /* Part count can be 0 in wildcard searches. */
 	for (; part < end; part++) {
 		const char *field;
@@ -445,12 +445,12 @@ tuple_compare_with_key_slowpath_raw(const struct tuple_format *format,
 static int
 tuple_compare_with_key_slowpath(const struct tuple *tuple, const char *key,
 			        uint32_t part_count,
-			        const struct key_def *key_def)
+			        const struct part_def *part_def)
 {
 	return tuple_compare_with_key_slowpath_raw(tuple_format(tuple),
 						   tuple_data(tuple),
 						   tuple_field_map(tuple), key,
-						   part_count, key_def);
+						   part_count, part_def);
 }
 
 template <int TYPE>
@@ -570,7 +570,7 @@ struct TupleCompare
 {
 	static int compare(const struct tuple *tuple_a,
 			   const struct tuple *tuple_b,
-			   const struct key_def *)
+			   const struct part_def *)
 	{
 		struct tuple_format *format_a = tuple_format(tuple_a);
 		struct tuple_format *format_b = tuple_format(tuple_b);
@@ -589,7 +589,7 @@ template <int TYPE, int ...MORE_TYPES>
 struct TupleCompare<0, TYPE, MORE_TYPES...> {
 	static int compare(const struct tuple *tuple_a,
 			   const struct tuple *tuple_b,
-			   const struct key_def *)
+			   const struct part_def *)
 	{
 		struct tuple_format *format_a = tuple_format(tuple_a);
 		struct tuple_format *format_b = tuple_format(tuple_b);
@@ -633,17 +633,17 @@ static const comparator_signature cmp_arr[] = {
 #undef COMPARATOR
 
 tuple_compare_t
-tuple_compare_create(const struct key_def *def) {
+tuple_compare_create(const struct part_def *def) {
 	for (uint32_t k = 0; k < sizeof(cmp_arr) / sizeof(cmp_arr[0]); k++) {
 		uint32_t i = 0;
-		for (; i < def->part_def.part_count; i++)
-			if (def->part_def.parts[i].fieldno != cmp_arr[k].p[i * 2] ||
-			    def->part_def.parts[i].type != cmp_arr[k].p[i * 2 + 1])
+		for (; i < def->part_count; i++)
+			if (def->parts[i].fieldno != cmp_arr[k].p[i * 2] ||
+			    def->parts[i].type != cmp_arr[k].p[i * 2 + 1])
 				break;
-		if (i == def->part_def.part_count && cmp_arr[k].p[i * 2] == UINT32_MAX)
+		if (i == def->part_count && cmp_arr[k].p[i * 2] == UINT32_MAX)
 			return cmp_arr[k].f;
 	}
-	if (key_def_is_sequential(def))
+	if (part_def_is_sequential(def))
 		return tuple_compare_sequential;
 	return tuple_compare_slowpath;
 }
@@ -719,7 +719,7 @@ struct FieldCompareWithKey<FLD_ID, IDX, TYPE, IDX2, TYPE2, MORE_TYPES...>
 {
 	inline static int
 	compare(const struct tuple *tuple, const char *key,
-		uint32_t part_count, const struct key_def *key_def,
+		uint32_t part_count, const struct part_def *part_def,
 		const struct tuple_format *format, const char *field)
 	{
 		int r;
@@ -738,7 +738,7 @@ struct FieldCompareWithKey<FLD_ID, IDX, TYPE, IDX2, TYPE2, MORE_TYPES...>
 		}
 		return FieldCompareWithKey<FLD_ID + 1, IDX2, TYPE2, MORE_TYPES...>::
 				compare(tuple, key, part_count,
-					       key_def, format, field);
+					       part_def, format, field);
 	}
 };
 
@@ -747,7 +747,7 @@ struct FieldCompareWithKey<FLD_ID, IDX, TYPE> {
 	inline static int compare(const struct tuple *,
 					 const char *key,
 					 uint32_t,
-					 const struct key_def *,
+					 const struct part_def *,
 					 const struct tuple_format *,
 					 const char *field)
 	{
@@ -763,7 +763,7 @@ struct TupleCompareWithKey
 {
 	static int
 	compare(const struct tuple *tuple, const char *key,
-		uint32_t part_count, const struct key_def *key_def)
+		uint32_t part_count, const struct part_def *part_def)
 	{
 		/* Part count can be 0 in wildcard searches. */
 		if (part_count == 0)
@@ -774,7 +774,7 @@ struct TupleCompareWithKey
 						    IDX);
 		return FieldCompareWithKey<FLD_ID, IDX, TYPE, MORE_TYPES...>::
 				compare(tuple, key, part_count,
-					key_def, format, field);
+					part_def, format, field);
 	}
 };
 
@@ -784,7 +784,7 @@ struct TupleCompareWithKey<0, 0, TYPE, MORE_TYPES...>
 	static int compare(const struct tuple *tuple,
 				  const char *key,
 				  uint32_t part_count,
-				  const struct key_def *key_def)
+				  const struct part_def *part_def)
 	{
 		/* Part count can be 0 in wildcard searches. */
 		if (part_count == 0)
@@ -794,7 +794,7 @@ struct TupleCompareWithKey<0, 0, TYPE, MORE_TYPES...>
 		mp_decode_array(&field);
 		return FieldCompareWithKey<0, 0, TYPE, MORE_TYPES...>::
 			compare(tuple, key, part_count,
-				key_def, format, field);
+				part_def, format, field);
 	}
 };
 
@@ -828,23 +828,23 @@ static const comparator_with_key_signature cmp_wk_arr[] = {
 #undef KEY_COMPARATOR
 
 tuple_compare_with_key_t
-tuple_compare_with_key_create(const struct key_def *def)
+tuple_compare_with_key_create(const struct part_def *def)
 {
 	for (uint32_t k = 0;
 	     k < sizeof(cmp_wk_arr) / sizeof(cmp_wk_arr[0]);
 	     k++) {
 
 		uint32_t i = 0;
-		for (; i < def->part_def.part_count; i++) {
-			if (def->part_def.parts[i].fieldno != cmp_wk_arr[k].p[i * 2] ||
-			    def->part_def.parts[i].type != cmp_wk_arr[k].p[i * 2 + 1]) {
+		for (; i < def->part_count; i++) {
+			if (def->parts[i].fieldno != cmp_wk_arr[k].p[i * 2] ||
+			    def->parts[i].type != cmp_wk_arr[k].p[i * 2 + 1]) {
 				break;
 			}
 		}
-		if (i == def->part_def.part_count)
+		if (i == def->part_count)
 			return cmp_wk_arr[k].f;
 	}
-	if (key_def_is_sequential(def))
+	if (part_def_is_sequential(def))
 		return tuple_compare_with_key_sequential;
 	return tuple_compare_with_key_slowpath;
 }

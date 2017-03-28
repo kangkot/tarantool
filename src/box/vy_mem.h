@@ -61,9 +61,9 @@ struct tree_mem_key {
  */
 static int
 vy_mem_tree_cmp(const struct tuple *a, const struct tuple *b,
-		const struct key_def *key_def)
+		const struct part_def *part_def)
 {
-	int res = vy_stmt_compare(a, b, key_def);
+	int res = vy_stmt_compare(a, b, part_def);
 	if (res)
 		return res;
 	int64_t a_lsn = vy_stmt_lsn(a), b_lsn = vy_stmt_lsn(b);
@@ -75,9 +75,9 @@ vy_mem_tree_cmp(const struct tuple *a, const struct tuple *b,
  */
 static int
 vy_mem_tree_cmp_key(const struct tuple *a, struct tree_mem_key *key,
-		    const struct key_def *key_def)
+		    const struct part_def *part_def)
 {
-	int res = vy_stmt_compare(a, key->stmt, key_def);
+	int res = vy_stmt_compare(a, key->stmt, part_def);
 	if (res == 0) {
 		if (key->lsn == INT64_MAX - 1)
 			return 0;
@@ -92,11 +92,11 @@ vy_mem_tree_cmp_key(const struct tuple *a, struct tree_mem_key *key,
 #define BPS_TREE_NAME vy_mem_tree
 #define BPS_TREE_BLOCK_SIZE 512
 #define BPS_TREE_EXTENT_SIZE VY_MEM_TREE_EXTENT_SIZE
-#define BPS_TREE_COMPARE(a, b, key_def) vy_mem_tree_cmp(a, b, key_def)
-#define BPS_TREE_COMPARE_KEY(a, b, key_def) vy_mem_tree_cmp_key(a, b, key_def)
+#define BPS_TREE_COMPARE(a, b, part_def) vy_mem_tree_cmp(a, b, part_def)
+#define BPS_TREE_COMPARE_KEY(a, b, part_def) vy_mem_tree_cmp_key(a, b, part_def)
 #define bps_tree_elem_t const struct tuple *
 #define bps_tree_key_t struct tree_mem_key *
-#define bps_tree_arg_t const struct key_def *
+#define bps_tree_arg_t const struct part_def *
 #define BPS_TREE_NO_DEBUG
 
 #include <salad/bps_tree.h>
