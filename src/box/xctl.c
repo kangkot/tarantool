@@ -140,8 +140,6 @@ struct xctl {
 	char vinyl_dir[PATH_MAX];
 	/** Last checkpoint vclock. */
 	struct vclock last_checkpoint;
-	/** Next to last checkpoint vclock. */
-	struct vclock prev_checkpoint;
 	/** Recovery context. */
 	struct xctl_recovery *recovery;
 	/** Latch protecting the log buffer. */
@@ -277,6 +275,24 @@ xctl_recovery_iterate_vy_index(struct vy_index_recovery_info *index,
 static int
 xctl_recovery_iterate(struct xctl_recovery *recovery, bool include_deleted,
 		      xctl_recovery_cb cb, void *cb_arg);
+
+/**
+ * Return the lsn of the checkpoint that was taken
+ * before the given lsn.
+ */
+static int64_t
+xctl_prev_checkpoint(int64_t lsn)
+{
+	int64_t ret = -1;
+	for (struct vclock *vclock = vclockset_last(&xctl.dir.index);
+	     vclock != NULL; vclock = vclockset_prev(&xctl.dir.index, vclock)) {
+		if (vclock_sum(vclock) < lsn) {
+			ret = vclock_sum(vclock);
+			break;
+		}
+	}
+	return ret;
+}
 
 /** An snprint-style function to print a log record. */
 static int
@@ -871,10 +887,6 @@ xctl_end_recovery(void)
 			return -1;
 	}
 
-	vclock = vclockset_prev(&xctl.dir.index, vclock);
-	if (vclock != NULL)
-		vclock_copy(&xctl.prev_checkpoint, vclock);
-
 	/*
 	 * If the instance is shut down while a dump/compaction task
 	 * is in progress, we'll get an unfinished run file on disk,
@@ -1032,7 +1044,6 @@ xctl_rotate(const struct vclock *vclock)
 	 * automatically on the first write (see wal_write_xctl()).
 	 */
 	wal_rotate_xctl();
-	vclock_copy(&xctl.prev_checkpoint, &xctl.last_checkpoint);
 	vclock_copy(&xctl.last_checkpoint, vclock);
 
 	/* Add the new vclock to the xdir so that we can track it. */
@@ -1100,8 +1111,7 @@ xctl_collect_garbage(int64_t signature)
 	 * Always keep the previous file, because
 	 * it is still needed for backups.
 	 */
-	signature = MIN(signature, vclock_sum(&xctl.prev_checkpoint));
-	coio_call(xctl_collect_garbage_f, signature);
+	coio_call(xctl_collect_garbage_f, xctl_prev_checkpoint(signature));
 
 	say_debug("%s: done", __func__);
 }
@@ -1206,9 +1216,9 @@ xctl_backup(xctl_backup_cb cb, void *cb_arg)
 
 	/* Load recovery context. */
 	latch_lock(&xctl.latch);
+	int64_t last_checkpoint = vclock_sum(&xctl.last_checkpoint);
 	struct xctl_recovery *recovery;
-	rc = coio_call(xctl_recovery_new_f,
-		       vclock_sum(&xctl.last_checkpoint), &recovery);
+	rc = coio_call(xctl_recovery_new_f, last_checkpoint, &recovery);
 	latch_unlock(&xctl.latch);
 	if (rc != 0)
 		goto out_free_path;
@@ -1218,14 +1228,18 @@ xctl_backup(xctl_backup_cb cb, void *cb_arg)
 	 * Use the previous log file, because the current one
 	 * contains records written after the last checkpoint.
 	 */
-	rc = cb(xdir_format_filename(&xctl.dir,
-			vclock_sum(&xctl.prev_checkpoint), NONE), cb_arg);
+	int64_t prev_checkpoint = xctl_prev_checkpoint(last_checkpoint);
+	if (prev_checkpoint < 0) {
+		diag_set(ClientError, ER_MISSING_SNAPSHOT);
+		rc = -1;
+		goto out_free_recovery;
+	}
+	rc = cb(xdir_format_filename(&xctl.dir, prev_checkpoint, NONE), cb_arg);
 	if (rc != 0)
 		goto out_free_recovery;
 
 	/* Backup memtx snapshot. */
-	xctl_snprint_memtx_snap_path(path, PATH_MAX,
-			vclock_sum(&xctl.last_checkpoint));
+	xctl_snprint_memtx_snap_path(path, PATH_MAX, last_checkpoint);
 	rc = cb(path, cb_arg);
 	if (rc != 0)
 		goto out_free_recovery;
