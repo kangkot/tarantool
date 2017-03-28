@@ -194,7 +194,7 @@ tuple_format_ref(struct tuple_format *format, int count)
  * @retval     NULL Memory error.
  */
 struct tuple_format *
-tuple_format_new(struct tuple_format_vtab *vtab, struct part_def **keys,
+tuple_format_new(struct tuple_format_vtab *vtab, struct key_def **keys,
 		 uint16_t key_count, uint16_t extra_size);
 
 /**

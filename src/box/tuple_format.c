@@ -39,7 +39,7 @@ static uint32_t formats_size = 0, formats_capacity = 0;
 
 /** Extract all available type info from keys. */
 static int
-tuple_format_create(struct tuple_format *format, struct part_def **keys,
+tuple_format_create(struct tuple_format *format, struct key_def **keys,
 		    uint16_t key_count)
 {
 	if (format->field_count == 0) {
@@ -57,10 +57,10 @@ tuple_format_create(struct tuple_format *format, struct part_def **keys,
 
 	/* extract field type info */
 	for (uint16_t key_no = 0; key_no < key_count; ++key_no) {
-		struct part_def *part_def = keys[key_no];
-		bool is_sequential = part_def_is_sequential(part_def);
-		const struct key_part *part = part_def->parts;
-		const struct key_part *parts_end = part + part_def->part_count;
+		struct key_def *key_def = keys[key_no];
+		bool is_sequential = key_def_is_sequential(key_def);
+		const struct key_part *part = key_def->parts;
+		const struct key_part *parts_end = part + key_def->part_count;
 
 		for (; part < parts_end; part++) {
 			assert(part->fieldno < format->field_count);
@@ -76,7 +76,6 @@ tuple_format_create(struct tuple_format *format, struct part_def **keys,
 				 * indexed field type.
 				 */
 				diag_set(ClientError, ER_FIELD_TYPE_MISMATCH,
-					 "",
 					 part->fieldno + TUPLE_INDEX_BASE,
 					 field_type_strs[part->type],
 					 field_type_strs[field->type]);
@@ -155,15 +154,15 @@ tuple_format_deregister(struct tuple_format *format)
 }
 
 static struct tuple_format *
-tuple_format_alloc(struct part_def **keys, uint16_t key_count)
+tuple_format_alloc(struct key_def **keys, uint16_t key_count)
 {
 	uint32_t max_fieldno = 0;
 
 	/* find max max field no */
 	for (uint16_t key_no = 0; key_no < key_count; ++key_no) {
-		struct part_def *part_def = keys[key_no];
-		struct key_part *part = part_def->parts;
-		struct key_part *pend = part + part_def->part_count;
+		struct key_def *key_def = keys[key_no];
+		struct key_part *part = key_def->parts;
+		struct key_part *pend = part + key_def->part_count;
 		for (; part < pend; part++)
 			max_fieldno = MAX(max_fieldno, part->fieldno);
 	}
@@ -194,7 +193,7 @@ tuple_format_delete(struct tuple_format *format)
 }
 
 struct tuple_format *
-tuple_format_new(struct tuple_format_vtab *vtab, struct part_def **keys,
+tuple_format_new(struct tuple_format_vtab *vtab, struct key_def **keys,
 		 uint16_t key_count, uint16_t extra_size)
 {
 	struct tuple_format *format = tuple_format_alloc(keys, key_count);

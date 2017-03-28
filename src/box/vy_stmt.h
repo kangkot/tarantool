@@ -233,7 +233,7 @@ vy_stmt_is_region_allocated(const struct tuple *stmt)
  * Compare SELECT/DELETE statements using the key definition
  * @param a left operand (SELECT/DELETE)
  * @param b right operand (SELECT/DELETE)
- * @param key_def key definition
+ * @param index_def key definition
  *
  * @retval 0   if a == b
  * @retval > 0 if a > b
@@ -243,18 +243,18 @@ vy_stmt_is_region_allocated(const struct tuple *stmt)
  */
 static inline int
 vy_key_compare(const struct tuple *a, const struct tuple *b,
-	       const struct part_def *part_def)
+	       const struct key_def *key_def)
 {
 	assert(vy_stmt_type(a) == IPROTO_SELECT);
 	assert(vy_stmt_type(b) == IPROTO_SELECT);
-	return key_compare(tuple_data(a), tuple_data(b), part_def);
+	return key_compare(tuple_data(a), tuple_data(b), key_def);
 }
 
 /**
  * Compare REPLACE/UPSERTS statements.
  * @param a left operand (REPLACE/UPSERT)
  * @param b right operand (REPLACE/UPSERT)
- * @param key_def key definition
+ * @param index_def key definition
  *
  * @retval 0   if a == b
  * @retval > 0 if a > b
@@ -264,7 +264,7 @@ vy_key_compare(const struct tuple *a, const struct tuple *b,
  */
 static inline int
 vy_tuple_compare(const struct tuple *a, const struct tuple *b,
-		 const struct part_def *part_def)
+		 const struct key_def *key_def)
 {
 	assert(vy_stmt_type(a) == IPROTO_REPLACE ||
 	       vy_stmt_type(a) == IPROTO_UPSERT ||
@@ -272,7 +272,7 @@ vy_tuple_compare(const struct tuple *a, const struct tuple *b,
 	assert(vy_stmt_type(b) == IPROTO_REPLACE ||
 	       vy_stmt_type(b) == IPROTO_UPSERT ||
 	       vy_stmt_type(b) == IPROTO_DELETE);
-	return tuple_compare(a, b, part_def);
+	return tuple_compare(a, b, key_def);
 }
 
 /**
@@ -291,26 +291,26 @@ vy_tuple_compare(const struct tuple *a, const struct tuple *b,
  */
 static inline int
 vy_tuple_compare_with_raw_key(const struct tuple *tuple, const char *key,
-			      const struct part_def *part_def)
+			      const struct key_def *key_def)
 {
 	uint32_t part_count = mp_decode_array(&key);
-	return tuple_compare_with_key(tuple, key, part_count, part_def);
+	return tuple_compare_with_key(tuple, key, part_count, key_def);
 }
 
 /** @sa vy_tuple_compare_with_raw_key(). */
 static inline int
 vy_tuple_compare_with_key(const struct tuple *tuple, const struct tuple *key,
-			  const struct part_def *part_def)
+			  const struct key_def *key_def)
 {
 	const char *key_mp = tuple_data(key);
 	uint32_t part_count = mp_decode_array(&key_mp);
-	return tuple_compare_with_key(tuple, key_mp, part_count, part_def);
+	return tuple_compare_with_key(tuple, key_mp, part_count, key_def);
 }
 
 /** @sa tuple_compare. */
 static inline int
 vy_stmt_compare(const struct tuple *a, const struct tuple *b,
-		const struct part_def *part_def)
+		const struct key_def *key_def)
 {
 	bool a_is_tuple = vy_stmt_type(a) == IPROTO_REPLACE ||
 			  vy_stmt_type(a) == IPROTO_UPSERT ||
@@ -319,27 +319,27 @@ vy_stmt_compare(const struct tuple *a, const struct tuple *b,
 			  vy_stmt_type(b) == IPROTO_UPSERT ||
 			  vy_stmt_type(b) == IPROTO_DELETE;
 	if (a_is_tuple && b_is_tuple) {
-		return vy_tuple_compare(a, b, part_def);
+		return vy_tuple_compare(a, b, key_def);
 	} else if (a_is_tuple && !b_is_tuple) {
-		return vy_tuple_compare_with_key(a, b, part_def);
+		return vy_tuple_compare_with_key(a, b, key_def);
 	} else if (!a_is_tuple && b_is_tuple) {
-		return -vy_tuple_compare_with_key(b, a, part_def);
+		return -vy_tuple_compare_with_key(b, a, key_def);
 	} else {
 		assert(!a_is_tuple && !b_is_tuple);
-		return vy_key_compare(a, b, part_def);
+		return vy_key_compare(a, b, key_def);
 	}
 }
 
 /** @sa tuple_compare_with_raw_key. */
 static inline int
 vy_stmt_compare_with_raw_key(const struct tuple *stmt, const char *key,
-			     const struct part_def *part_def)
+			     const struct key_def *key_def)
 {
 	if (vy_stmt_type(stmt) == IPROTO_REPLACE ||
 	    vy_stmt_type(stmt) == IPROTO_UPSERT ||
 	    vy_stmt_type(stmt) == IPROTO_DELETE)
-		return vy_tuple_compare_with_raw_key(stmt, key, part_def);
-	return key_compare(tuple_data(stmt), key, part_def);
+		return vy_tuple_compare_with_raw_key(stmt, key, key_def);
+	return key_compare(tuple_data(stmt), key, key_def);
 }
 
 /**
@@ -370,7 +370,7 @@ vy_key_dup(const char *key);
  *
  * Example:
  * key: {a3, a5}
- * key_def: { 3, 5 }
+ * index_def: { 3, 5 }
  * result: {nil, nil, a3, nil, a5}
  *
  * @param format  Target tuple format.
@@ -383,7 +383,7 @@ vy_key_dup(const char *key);
 struct tuple *
 vy_stmt_new_surrogate_delete_from_key(struct tuple_format *format,
 				      const char *key,
-				      const struct key_def *def);
+				      const struct index_def *def);
 
 /**
  * Create a new surrogate DELETE from @a tuple using @a format.
@@ -392,7 +392,7 @@ vy_stmt_new_surrogate_delete_from_key(struct tuple_format *format,
  *
  * Example:
  * original:      {a1, a2, a3, a4, a5}
- * index key_def: {2, 4}
+ * index index_def: {2, 4}
  * result:        {null, a2, null, a4, null}
  *
  * @param format Target tuple format.
@@ -492,7 +492,7 @@ vy_stmt_upsert_ops(const struct tuple *tuple, uint32_t *mp_size)
  * Create the SELECT statement from MessagePack array.
  * @param format  Format of an index.
  * @param key     MessagePack array of key fields.
- * @param key_def Definition of the key.
+ * @param index_def Definition of the key.
  *
  * @retval not NULL Success.
  * @retval     NULL Memory error.
@@ -516,7 +516,7 @@ vy_key_from_msgpack(struct tuple_format *format, const char *key)
  * @retval -1 if error
  */
 int
-vy_stmt_encode(const struct tuple *value, const struct key_def *key_def,
+vy_stmt_encode(const struct tuple *value, const struct index_def *index_def,
 	       struct xrow_header *xrow);
 
 /**
@@ -527,7 +527,7 @@ vy_stmt_encode(const struct tuple *value, const struct key_def *key_def,
  */
 struct tuple *
 vy_stmt_decode(struct xrow_header *xrow, struct tuple_format *format,
-	       const struct key_def *def);
+	       const struct index_def *def);
 
 /**
  * Format a key into string.
