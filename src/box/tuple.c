@@ -35,6 +35,8 @@
 #include "tt_uuid.h"
 #include "third_party/PMurHash.h"
 
+#include "tuple_compare.h"
+
 enum {
 	HASH_SEED = 13U
 };
@@ -401,4 +403,11 @@ key_hash_slow_path(const char *key, const struct index_def *index_def)
 	}
 
 	return PMurHash32_Result(h, carry, total_size);
+}
+
+int
+box_tuple_compare(const box_tuple_t *tuple_a, const box_tuple_t *tuple_b,
+		  const box_key_def_t *key_def)
+{
+	return tuple_compare(tuple_a, tuple_b, key_def);
 }

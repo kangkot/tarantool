@@ -82,6 +82,8 @@ schema_object_type(const char *name);
 const char *
 schema_object_name(enum schema_object_type type);
 
+/** \cond public */
+
 /*
  * Possible field data types. Can't use STRS/ENUM macros for them,
  * since there is a mismatch between enum name (STRING) and type
@@ -97,6 +99,9 @@ enum field_type {
 	FIELD_TYPE_SCALAR,
 	field_type_MAX
 };
+
+/** \endcond public */
+
 extern const char *field_type_strs[];
 
 /* MsgPack type names */
@@ -244,6 +249,34 @@ struct key_def {
 	/** Description of parts of a multipart index. */
 	struct key_part parts[];
 };
+
+/** \cond public */
+
+typedef struct key_def box_key_def_t;
+
+/**
+ * Return count of bytes to store key definition with field_count partitions.
+ *
+ * \param field_count count of key partitions
+ * \retval count of bytes to store
+ */
+size_t
+box_key_def_size(uint16_t field_count);
+
+/**
+ * Create key definition with key fields with passed typed on passed positions.
+ * May be used for tuple format creation and/or tuple comparation.
+ *
+ * \param key_def key definition to create
+ * \param fields array with key fields positions
+ * \param types array with key field types
+ * \param field_count count of key fields
+ */
+void
+box_key_def_create(box_key_def_t *key_def, uint32_t *fields,
+		   enum field_type *types, uint16_t field_count);
+
+/** \endcond public */
 
 /* Definition of an index. */
 struct index_def {

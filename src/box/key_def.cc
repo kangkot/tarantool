@@ -164,6 +164,24 @@ key_def_set_cmp(struct key_def *def)
 	def->tuple_compare_with_key = tuple_compare_with_key_create(def);
 }
 
+size_t
+box_key_def_size(uint16_t field_count)
+{
+	return sizeof(struct key_def) + sizeof(struct key_part) * field_count;
+}
+
+void
+box_key_def_create(box_key_def_t *key_def, uint32_t *fields,
+		   enum field_type *types, uint16_t field_count)
+{
+	for (uint16_t item = 0; item < field_count; ++item) {
+		key_def->parts[item].fieldno = fields[item];
+		key_def->parts[item].type = types[item];
+	}
+	key_def->part_count = field_count;
+	key_def_set_cmp(key_def);
+}
+
 struct index_def *
 index_def_new(uint32_t space_id, uint32_t iid, const char *name,
 	      enum index_type type, const struct key_opts *opts,

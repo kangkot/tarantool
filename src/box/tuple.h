@@ -145,6 +145,19 @@ const char *
 box_tuple_field(const box_tuple_t *tuple, uint32_t fieldno);
 
 /**
+ * Compare tuples using the key definition.
+ * @param tuple_a first tuple
+ * @param tuple_b second tuple
+ * @param key_def key definition
+ * @retval 0  if key_fields(tuple_a) == key_fields(tuple_b)
+ * @retval <0 if key_fields(tuple_a) < key_fields(tuple_b)
+ * @retval >0 if key_fields(tuple_a) > key_fields(tuple_b)
+ */
+int
+box_tuple_compare(const box_tuple_t *tuple_a, const box_tuple_t *tuple_b,
+		  const box_key_def_t *key_def);
+
+/**
  * Tuple iterator
  */
 typedef struct tuple_iterator box_tuple_iterator_t;
