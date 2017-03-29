@@ -2005,7 +2005,7 @@ struct vy_write_iterator;
 
 static struct vy_write_iterator *
 vy_write_iterator_new(struct vy_index *index, bool is_last_level,
-		      int64_t oldest_vlsn);
+		      int64_t oldest_vlsn, const char *end);
 static NODISCARD int
 vy_write_iterator_add_run(struct vy_write_iterator *wi, struct vy_run *run);
 static NODISCARD int
@@ -2997,7 +2997,8 @@ vy_range_get_dump_iterator(struct vy_range *range, int64_t vlsn,
 	struct vy_mem *mem;
 	*p_max_output_count = 0;
 
-	wi = vy_write_iterator_new(range->index, range->run_count == 0, vlsn);
+	wi = vy_write_iterator_new(range->index, range->run_count == 0, vlsn,
+				   NULL);
 	if (wi == NULL)
 		goto err_wi;
 	rlist_foreach_entry(mem, &range->frozen, in_frozen) {
@@ -3034,7 +3035,7 @@ vy_range_get_compact_iterator(struct vy_range *range, int run_count,
 	struct vy_mem *mem;
 	*p_max_output_count = 0;
 
-	wi = vy_write_iterator_new(range->index, is_last_level, vlsn);
+	wi = vy_write_iterator_new(range->index, is_last_level, vlsn, NULL);
 	if (wi == NULL)
 		goto err_wi;
 	/*
@@ -9608,6 +9609,8 @@ struct vy_write_iterator {
 	struct vy_iterator_stat mem_iterator_stat;
 	/* Usage statistics of run iterators */
 	struct vy_iterator_stat run_iterator_stat;
+	/** Right border of the range to write. */
+	const char *end;
 };
 
 /*
@@ -9616,13 +9619,14 @@ struct vy_write_iterator {
  */
 static int
 vy_write_iterator_open(struct vy_write_iterator *wi, struct vy_index *index,
-		       bool is_last_level, int64_t oldest_vlsn)
+		       bool is_last_level, int64_t oldest_vlsn, const char *end)
 {
 	struct vy_env *env = index->env;
 	wi->index = index;
 	wi->oldest_vlsn = oldest_vlsn;
 	wi->is_last_level = is_last_level;
 	wi->goto_next_key = false;
+	wi->end = end;
 
 	wi->key = vy_stmt_new_select(env->key_format, NULL, 0);
 	if (wi->key == NULL)
@@ -9638,7 +9642,7 @@ vy_write_iterator_open(struct vy_write_iterator *wi, struct vy_index *index,
 
 static struct vy_write_iterator *
 vy_write_iterator_new(struct vy_index *index, bool is_last_level,
-		      int64_t oldest_vlsn)
+		      int64_t oldest_vlsn, const char *end)
 {
 	struct vy_write_iterator *wi = calloc(1, sizeof(*wi));
 	if (wi == NULL) {
@@ -9646,7 +9650,7 @@ vy_write_iterator_new(struct vy_index *index, bool is_last_level,
 		return NULL;
 	}
 	if (vy_write_iterator_open(wi, index, is_last_level,
-				   oldest_vlsn) != 0) {
+				   oldest_vlsn, end) != 0) {
 		free(wi);
 		return NULL;
 	}
@@ -9769,6 +9773,10 @@ vy_write_iterator_next(struct vy_write_iterator *wi, struct tuple **ret)
 		wi->tmp_stmt = stmt;
 		break;
 	}
+	if (wi->end != NULL && stmt != NULL &&
+	    vy_tuple_compare_with_raw_key(stmt, wi->end, &def->key_def) > 0)
+		/* End of the search. */
+		return 0;
 	*ret = stmt;
 	return 0;
 }
