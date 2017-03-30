@@ -55,6 +55,8 @@
 
 static sqlite3 *db = NULL;
 
+static const char nil_key[] = { 0x90 }; /* Empty MsgPack array. */
+
 /*
  * Manully add objects to SQLite in-memory schema.
  * This is loosely based on sqlite_master row format.
@@ -66,7 +68,9 @@ static sqlite3 *db = NULL;
  */
 static void
 sql_schema_put(InitData *init,
-	       const char *name, int id, const char *sql)
+	       const char *name,
+	       uint32_t spaceid, uint32_t indexid,
+	       const char *sql)
 {
 	char pageno[16];
 	char *argv[] = {
@@ -79,8 +83,8 @@ sql_schema_put(InitData *init,
 	if (init->rc != SQLITE_OK) return;
 
 	snprintf(pageno, sizeof(pageno), "%d",
-		SQLITE_PAGENO_FROM_SPACEID_AND_INDEXID(id, 0)
-	);
+		 SQLITE_PAGENO_FROM_SPACEID_AND_INDEXID(
+			 spaceid, indexid));
 
 	sqlite3InitCallback(init, 3, argv, NULL);
 }
@@ -97,12 +101,22 @@ sql_init()
 	}
 }
 
+/* TODO move to public header */
+void
+space_def_create_from_tuple(struct space_def *def, struct tuple *tuple,
+			    uint32_t errcode);
+struct key_def *
+key_def_new_from_tuple(struct tuple *tuple);
+
 /* Load database schema from Tarantool. */
 void tarantoolSqlite3LoadSchema(InitData *init)
 {
+	box_iterator_t *it;
+	box_tuple_t *tuple;
+
 	sql_schema_put(
 		init, TARANTOOL_SYS_SCHEMA_NAME,
-		BOX_SCHEMA_ID,
+		BOX_SCHEMA_ID, 0,
 		"CREATE TABLE "TARANTOOL_SYS_SCHEMA_NAME" ("
 			"key TEXT PRIMARY KEY, value"
 		") WITHOUT ROWID"
@@ -110,7 +124,7 @@ void tarantoolSqlite3LoadSchema(InitData *init)
 
 	sql_schema_put(
 		init, TARANTOOL_SYS_SPACE_NAME,
-		BOX_SPACE_ID,
+		BOX_SPACE_ID, 0,
 		"CREATE TABLE "TARANTOOL_SYS_SPACE_NAME" ("
 			"id INT PRIMARY KEY, owner INT, name TEXT, "
 			"engine TEXT, field_count INT, opts, format"
@@ -119,13 +133,62 @@ void tarantoolSqlite3LoadSchema(InitData *init)
 
 	sql_schema_put(
 		init, TARANTOOL_SYS_INDEX_NAME,
-		BOX_INDEX_ID,
+		BOX_INDEX_ID, 0,
 		"CREATE TABLE "TARANTOOL_SYS_INDEX_NAME" ("
 			"id INT, iid INT, "
 			"name TEXT, type TEXT, opts, parts, "
 			"PRIMARY KEY (id, iid)"
 		") WITHOUT ROWID"
 	);
+
+	/* Read _space */
+	it = box_index_iterator(BOX_SPACE_ID, 0, ITER_GE,
+				nil_key, nil_key + sizeof(nil_key));
+
+	if (it == NULL) {
+		init->rc = SQLITE_TARANTOOL_ERROR;
+		return;
+	}
+
+	while (box_iterator_next(it, &tuple) == 0 && tuple != NULL) {
+		struct space_def def;
+		space_def_create_from_tuple(&def, tuple, 0);
+		if (def.opts.sql != NULL) {
+			init->iSqlLength = (int)def.opts.sql_length;
+			sql_schema_put(
+				init, def.name,
+				def.id, 0,
+				def.opts.sql
+			);
+		}
+	}
+
+	box_iterator_free(it);
+
+	/* Read _index */
+	it = box_index_iterator(BOX_INDEX_ID, 0, ITER_GE,
+				nil_key, nil_key + sizeof(nil_key));
+
+	if (it == NULL) {
+		init->rc = SQLITE_TARANTOOL_ERROR;
+		return;
+	}
+
+	while (box_iterator_next(it, &tuple) == 0 && tuple != NULL) {
+		struct key_def *def;
+		def = key_def_new_from_tuple(tuple);
+		if (def->opts.sql != NULL) {
+			init->iSqlLength = (int)def->opts.sql_length;
+			sql_schema_put(
+				init, def->name,
+				def->space_id, def->iid,
+				def->opts.sql
+			);
+		}
+		key_def_delete(def);
+	}
+
+	box_iterator_free(it);
 }
 
 void
@@ -186,8 +249,6 @@ sql_get()
  * the search key (-1), which is unnecessary since Tarantool iterators
  * are accurately positioned, hence both 0 and 1 are fine.
  */
-
-static const char nil_key[] = { 0x90 }; /* Empty MsgPack array. */
 
 /*
  * Tarantool iterator API was apparently designed by space aliens.
